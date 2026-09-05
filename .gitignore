@@ -1,0 +1,34 @@
+# === Secrets & environment files ===
+.env
+.env.*
+*.pem
+*.key
+*credentials*
+*secret*
+
+# === Docker (upcoming OpenCTI/MISP phase) ===
+docker-compose.override.yml
+.docker/
+
+# === VM / hypervisor artifacts (should never be committed) ===
+*.vmdk
+*.vmem
+*.vmsn
+*.vmsd
+*.nvram
+*.ova
+*.ovf
+
+# === OS junk files ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Editor / IDE ===
+.vscode/
+.idea/
+*.swp
+
+# === Logs / temp output ===
+*.log
+*.tmp
