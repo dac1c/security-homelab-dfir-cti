@@ -83,7 +83,8 @@ keep the exercises realistic and the defensive side genuinely isolated.
 
 |#|Title|Techniques|Status|
 |-|-|-|-|
-|01|[External SMB Exposure \& Detection](./dfir-writeups/01-external-smb-exposure-purple-team-exercise.md)|T1046 Network Service Scanning, T1021.002 SMB/Admin Shares, T1078 Valid Accounts|Complete|
+|01| [External SMB Exposure \& Detection](./dfir-writeups/01-external-smb-exposure-purple-team-exercise.md)|T1046 Network Service Scanning, T1021.002 SMB/Admin Shares, T1078 Valid Accounts|Complete|
+|02| [SSH Brute-Force Attack Against Linux Target](dfir-writeups/02-ssh-bruteforce-linux-victim.md) | T1110 Brute Force, T1078 Valid Accounts | Complete |
 
 More exercises are added as the lab grows — each one documented as a
 standalone incident report, not just a log of commands run.
@@ -92,7 +93,7 @@ standalone incident report, not just a log of commands run.
 
 ## What's next
 
-* \[ ] Linux target with auditd, for cross-platform detection coverage
+* \[x] Linux target with auditd, for cross-platform detection coverage
 * \[ ] Additional attack scenarios (RDP brute-force, credential dumping)
 * \[ ] Custom Wazuh rules tuned to reduce false positives from this specific environment
 * \[ ] OpenCTI populated with real, public threat intel for analyst-style reporting
