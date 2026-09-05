@@ -104,5 +104,5 @@ standalone incident report, not just a log of commands run.
 ## Contact
 
 Open to junior SOC / DFIR / CTI roles, remote or relocation.
-[LinkedIn](#) · [TryHackMe profile](#)
+[LinkedIn](https://www.linkedin.com/in/dacicharis/) · [TryHackMe profile](https://tryhackme.com/p/harisD)
 
