@@ -200,9 +200,93 @@ This mirrors the analytical judgment discussed in Writeup #01: default rule seve
 1. Keep the built-in `Administrator` account disabled in production. If it must be enabled for a specific task, rotate its password immediately before enabling it and re-disable it as soon as the task is complete.
 2. Restrict remote write access to `ADMIN$`/`C$` via Group Policy or host firewall rules to only the specific management hosts and accounts that require it, rather than leaving these shares accessible to any authenticated local administrator over the network.
 3. Evaluate setting `LocalAccountTokenFilterPolicy` = 0 (the default) and verify it is not set to 1 on any host, as that setting disables UAC remote filtering and would have allowed the initial `victim` attempt to succeed without requiring the built-in Administrator account at all.
-4. Author a custom Wazuh correlation rule to detect rule 92650 followed by rule 92052 within a short time window on the same agent, and assign it level 12 or above with `mail: true` — the combination is a reliable composite indicator for this exact attack chain.
+4. ~~Author a custom Wazuh correlation rule to detect rule 92650 followed by rule 92052 within a short time window on the same agent, and assign it level 12 or above with `mail: true` — the combination is a reliable composite indicator for this exact attack chain.~~ **Closed — see Update below.**
 5. Investigate Sysmon configuration to determine why the dropped binary's own process creation event was not captured, and consider whether additional telemetry sources (e.g., Windows Security audit process creation, Event ID 4688) would provide redundant coverage for this gap.
 6. Apply the NTLMv1 deprecation and SMB exposure hardening recommended in Writeup #01 — this exercise reused the same exposed service and reinforces that those recommendations remain unaddressed.
+
+---
+
+## Update (14 September 2026) — Closing the Correlation Gap: Custom Wazuh Rule 100011
+
+Recommendation #4 above called for a custom Wazuh correlation rule combining rule 92650 (service installation) and rule 92052 (abnormal `cmd.exe` execution) into a single, higher-severity alert. This section documents that rule's implementation, two bugs encountered while authoring it, and its validation against a live re-run of the attack.
+
+### Rule Design
+
+```xml
+<rule id="100011" level="12" timeframe="60">
+  <if_sid>92052</if_sid>
+  <if_matched_sid>92650</if_matched_sid>
+  <same_field>agent.id</same_field>
+  <description>Correlated Lateral Movement: Service Creation followed by Suspicious Process Execution (Possible PsExec/Impacket)</description>
+  <mitre>
+    <id>T1021.002</id>
+    <id>T1569.002</id>
+    <id>T1059.003</id>
+  </mitre>
+  <options>alert_by_email</options>
+</rule>
+```
+
+The rule fires when rule 92052 is seen within 60 seconds of a prior match on rule 92650, elevating the pair to level 12 with `mail: true`.
+
+> **Analyst note:** The `<same_field>agent.id</same_field>` line was later removed (see Bug #2 below). It is shown here as originally written because the debugging process below is itself part of the record.
+
+### Bug #1 — `timeframe` Is an Attribute, Not an Element
+
+The first draft placed `timeframe` as its own XML element (`<timeframe>60</timeframe>`) rather than as an attribute on the `<rule>` tag. Wazuh rejected this with `Invalid option 'timeframe' for rule` and refused to start.
+
+> **Analyst note:** After the fix, the manager still failed to start with the same error. Re-reading the file with `cat` (rather than trusting that the `nano` edit had been clean) showed the old `<timeframe>` element was still present alongside the newly added attribute — both had silently coexisted. The lesson generalised beyond this one rule: always re-read a config file after editing it, rather than assuming the edit was applied as intended.
+
+### Bug #2 — `same_field` Does Not Work Against Static Metadata
+
+With the `timeframe` bug fixed, the manager started cleanly and the rule loaded without error — but it never fired, even when 92650 and 92052 were confirmed present for the same agent within the correlation window.
+
+```
+rule.id:92650  →  2026-09-13 22:58:23.685 UTC  (agent.id: 001)
+rule.id:92052  →  2026-09-13 22:58:24.145 UTC  (agent.id: 001, +0.46s)
+rule.id:100011 →  no hits
+```
+
+> **Analyst note:** `<same_field>` in Wazuh only compares fields extracted dynamically by a decoder (via `<field name="...">`), not fixed metadata that Wazuh attaches to every alert regardless of decoder — `agent.id` falls into the latter category. Because the field never resolves to a decoder-extracted value, the comparison silently fails with no error logged, which made this considerably harder to isolate than Bug #1. It is also redundant: `if_matched_sid` correlation is already scoped to the same agent by default, and only stops doing so if `<global_frequency/>` is explicitly added. The fix was simply to delete the `<same_field>` line.
+
+Final, working rule:
+
+```xml
+<rule id="100011" level="12" timeframe="60">
+  <if_sid>92052</if_sid>
+  <if_matched_sid>92650</if_matched_sid>
+  <description>Correlated Lateral Movement: Service Creation followed by Suspicious Process Execution (Possible PsExec/Impacket)</description>
+  <mitre>
+    <id>T1021.002</id>
+    <id>T1569.002</id>
+    <id>T1059.003</id>
+  </mitre>
+  <options>alert_by_email</options>
+</rule>
+```
+
+### Validation — Live Re-Run
+
+The attack was re-run end-to-end (`impacket-psexec` against `Windows-Victim-01`, same technique as the main body of this writeup) to generate fresh events after the rule was deployed. The first live-fire attempt post-fix was blocked by Windows Defender, which quarantined the dropped binary under signature `VirTool:Win32/RemoteExec!pz` before the service could establish its shell — an artefact of standard AV behaviour against RemCom-based tooling, not a Wazuh issue. A folder exclusion for `C:\Windows` was added to the lab target to allow the technique to execute, consistent with this being a controlled detection-engineering exercise rather than an AV-evasion test.
+
+With the exclusion in place, the attack succeeded and rule 100011 fired on the first attempt:
+
+| Field               | Value                                                                                                              |
+|---------------------|----------------------------------------------------------------------------------------------------------------------|
+| `rule.id`           | 100011                                                                                                              |
+| `rule.level`        | 12                                                                                                                   |
+| `rule.mail`         | true                                                                                                                 |
+| `rule.frequency`    | 2                                                                                                                    |
+| `rule.description`  | Correlated Lateral Movement: Service Creation followed by Suspicious Process Execution (Possible PsExec/Impacket) |
+| `rule.mitre.id`     | T1021.002, T1569.002, T1059.003                                                                                     |
+| `rule.mitre.tactic` | Lateral Movement, Execution                                                                                         |
+| `agent.name`        | windows-victim-01                                                                                                   |
+
+> **Analyst note:** The correlated alert carries all three MITRE technique IDs from its two constituent rules, giving an analyst the full technique chain in a single alert rather than requiring manual correlation across two separate low-context events — directly resolving the prioritisation gap identified in the Detection Analysis section above.
+
+### Outcome
+
+Recommendation #4 is closed. The manager was snapshotted (VMware) immediately after this validation to preserve the working configuration.
 
 ---
 
@@ -210,6 +294,6 @@ This mirrors the analytical judgment discussed in Writeup #01: default rule seve
 
 - Attack tool: Impacket `impacket-psexec` (Impacket v0.14.0.dev0, Fortra)
 - Detection platform: Wazuh 4.14.7 (Manager + Indexer + Dashboard, all-in-one)
-- Relevant Wazuh rule IDs: `92650`, `92052` (both built-in, default ruleset — no custom rule authored for this exercise)
+- Relevant Wazuh rule IDs: `92650`, `92052` (built-in, default ruleset); `100011` (custom correlation rule, authored and validated 13–14 September 2026 — see Update above)
 - MITRE ATT&CK techniques observed: T1021.002 (Remote Services: SMB/Windows Admin Shares), T1569.002 (System Services: Service Execution), T1059.003 (Command and Scripting Interpreter: Windows Command Shell)
 - Related writeups: [Writeup #01 — External SMB Exposure](../dfir-writeups/01-external-smb-exposure-purple-team-exercise.md), [Writeup #02 — SSH Brute-Force](../dfir-writeups/02-ssh-bruteforce-linux-victim.md)
