@@ -94,7 +94,7 @@ standalone incident report, not just a log of commands run.
 ## What's next
 
 * \[x] Linux target with auditd, for cross-platform detection coverage
-* \[ ] Additional attack scenarios (RDP brute-force, credential dumping)
+* \[x] Additional attack scenarios (RDP brute-force, credential dumping)
 * \[ ] Custom Wazuh rules tuned to reduce false positives from this specific environment
 * \[ ] OpenCTI populated with real, public threat intel for analyst-style reporting
 * \[ ] SOAR automation with Shuffle
