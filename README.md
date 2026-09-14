@@ -59,7 +59,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |Network / Firewall|pfSense CE|
 |SIEM / XDR|Wazuh (Indexer + Manager + Dashboard)|
 |Endpoint telemetry|Sysmon (SwiftOnSecurity config)|
-|Offensive tooling|Kali Linux, nmap, smbclient, enum4linux|
+|Offensive tooling|Kali Linux, nmap, smbclient, enum4linux, Impacket (psexec)|
 |CTI (in progress)|OpenCTI, MISP|
 |SOAR (planned)|Shuffle|
 |Infrastructure (in progress)|Docker, Kubernetes|
@@ -85,6 +85,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |-|-|-|-|
 |01| [External SMB Exposure \& Detection](./dfir-writeups/01-external-smb-exposure-purple-team-exercise.md)|T1046 Network Service Scanning, T1021.002 SMB/Admin Shares, T1078 Valid Accounts|Complete|
 |02| [SSH Brute-Force Attack Against Linux Target](dfir-writeups/02-ssh-bruteforce-linux-victim.md) | T1110 Brute Force, T1078 Valid Accounts | Complete |
+|03| [Lateral Movement via SMB Admin Shares to SYSTEM-Level Code Execution](./dfir-writeups/03-smb-admin-shares-lateral-movement.md) | T1021.002 SMB/Admin Shares, T1569.002 Service Execution, T1059.003 Windows Command Shell | Complete |
 
 More exercises are added as the lab grows — each one documented as a
 standalone incident report, not just a log of commands run.
@@ -94,8 +95,8 @@ standalone incident report, not just a log of commands run.
 ## What's next
 
 * \[x] Linux target with auditd, for cross-platform detection coverage
-* \[x] Additional attack scenarios (RDP brute-force, credential dumping)
-* \[ ] Custom Wazuh rules tuned to reduce false positives from this specific environment
+* \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
+* \[x] Custom Wazuh correlation rules — rule 100011 authored, debugged, and validated against live attack traffic
 * \[ ] OpenCTI populated with real, public threat intel for analyst-style reporting
 * \[ ] SOAR automation with Shuffle
 
