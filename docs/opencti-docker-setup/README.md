@@ -30,7 +30,7 @@ STIX2-modeled intelligence in OpenCTI.
 * **OpenCTI deployment:** Official OpenCTI Docker Compose stack — platform,
   Elasticsearch, RabbitMQ, Redis, MinIO, 3 workers, and a set of standard
   connectors (MITRE, import/export file handlers, external reference
-  enrichment), 18 services total
+  enrichment), 26 services total
 * **MISP:** Runs as a **separate** Docker Compose project (`~/misp-docker`),
   on the same host but its own network — see integration section below for
   how the two stacks talk to each other
@@ -277,6 +277,118 @@ is why no merge option appeared for these two — they represent genuinely
 different concepts that happen to share a display name.
 
 ---
+
+## External Threat Intel Feed Connectors: ThreatFox & CIRCL OSINT
+
+### Why external feeds
+
+Where the MISP connector (above) imports the lab's own manually-created
+events, these two connectors pull in **third-party, publicly maintained**
+threat intelligence — giving the graph a baseline of real-world indicators
+and reports to correlate against, without requiring any manual event
+creation. Both are official OpenCTI connectors, added the same way as
+`connector-misp`: as additional services in `~/opencti-docker/docker-compose.yml`,
+neither requiring account registration or an API key.
+
+### ThreatFox (abuse.ch)
+
+Pulls recent malware-associated IOCs (IPs, domains, URLs, file hashes) from
+abuse.ch's ThreatFox project.
+
+```yaml
+connector-threatfox:
+  image: opencti/connector-threatfox:latest
+  environment:
+    - OPENCTI_URL=http://opencti:8080
+    - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+    - CONNECTOR_ID=${CONNECTOR_THREATFOX_ID}
+    - CONNECTOR_NAME=ThreatFox
+    - CONNECTOR_SCOPE=threatfox
+    - CONNECTOR_LOG_LEVEL=info
+    - THREATFOX_CSV_URL=https://threatfox.abuse.ch/export/csv/recent/
+    - THREATFOX_INTERVAL=3
+    - THREATFOX_IMPORT_OFFLINE=true
+    - THREATFOX_CREATE_INDICATORS=true
+    - THREATFOX_DEFAULT_X_OPENCTI_SCORE=50
+    - THREATFOX_IOC_TO_IMPORT=all_types
+  restart: always
+  depends_on:
+    opencti:
+      condition: service_healthy
+```
+
+`THREATFOX_INTERVAL=3` (days) was chosen deliberately lower-frequency than
+the 5-minute MISP interval — ThreatFox's "recent" feed already covers a
+rolling multi-day window, so polling it every few minutes would add load
+without adding new data.
+
+**Result:** on first sync, the platform's Indicator count jumped from 425 to
+1,641 (+1,631 in the first run alone), confirmed via **Integrations →
+Deployed → ThreatFox**, status `Active`.
+
+### CIRCL OSINT Feed
+
+CIRCL (Computer Incident Response Center Luxembourg) publishes a curated
+OSINT feed in the standard MISP feed format, containing analyst-written
+reports with linked indicators (e.g. Ivanti Connect Secure VPN zero-days,
+ConnectWise ScreenConnect exploitation, ransomware IOCs). Unlike ThreatFox,
+this isn't a purpose-built connector — it uses OpenCTI's generic
+`connector-misp-feed` image, pointed at CIRCL's published feed URL:
+
+```yaml
+connector-misp-feed:
+  image: opencti/connector-misp-feed:latest
+  environment:
+    - OPENCTI_URL=http://opencti:8080
+    - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+    - CONNECTOR_ID=${CONNECTOR_MISP_FEED_ID}
+    - CONNECTOR_NAME=CIRCL OSINT Feed
+    - CONNECTOR_SCOPE=misp-feed
+    - CONNECTOR_LOG_LEVEL=info
+    - CONNECTOR_DURATION_PERIOD=PT6H
+    - MISP_FEED_SOURCE_TYPE=url
+    - MISP_FEED_URL=https://www.circl.lu/doc/misp/feed-osint
+    - MISP_FEED_SSL_VERIFY=true
+    - MISP_FEED_IMPORT_FROM_DATE=2024-01-01
+    - MISP_FEED_CREATE_REPORTS=true
+    - MISP_FEED_CREATE_INDICATORS=true
+    - MISP_FEED_CREATE_OBSERVABLES=true
+    - MISP_FEED_CREATE_TAGS_AS_LABELS=true
+  restart: always
+  depends_on:
+    opencti:
+      condition: service_healthy
+```
+
+`MISP_FEED_IMPORT_FROM_DATE=2024-01-01` caps the initial backfill to roughly
+two years of history rather than the feed's full archive, keeping the first
+sync fast and the resulting graph focused on still-relevant intelligence.
+
+**Result:** confirmed via container logs processing individual events
+("Active Exploitation of Two Zero-Day Vulnerabilities in Ivanti Connect
+Secure VPN", "OSINT - KrustyLoader - Rust malware...") and status `Active` in
+**Integrations → Deployed**.
+
+### Resource impact
+
+Measured with `docker stats --no-stream` shortly after each connector's
+first sync:
+
+| Connector | RAM | CPU |
+|---|---|---|
+| connector-threatfox | 163 MiB | 0.07% |
+| connector-misp-feed | *(not separately re-measured this session)* | — |
+
+Negligible next to the 11GB WSL2 ceiling — no measurable change to CPU
+temperature from either connector, consistent with the expectation that
+polling connectors are I/O-bound, not compute-bound.
+
+### `.env` additions
+
+```
+CONNECTOR_THREATFOX_ID=<uuidgen output>
+CONNECTOR_MISP_FEED_ID=<uuidgen output>
+```
 
 ## Outcome
 
