@@ -30,7 +30,7 @@ STIX2-modeled intelligence in OpenCTI.
 * **OpenCTI deployment:** Official OpenCTI Docker Compose stack — platform,
   Elasticsearch, RabbitMQ, Redis, MinIO, 3 workers, and a set of standard
   connectors (MITRE, import/export file handlers, external reference
-  enrichment), 26 services total
+  enrichment), 27 services total
 * **MISP:** Runs as a **separate** Docker Compose project (`~/misp-docker`),
   on the same host but its own network — see integration section below for
   how the two stacks talk to each other
@@ -369,6 +369,42 @@ sync fast and the resulting graph focused on still-relevant intelligence.
 Secure VPN", "OSINT - KrustyLoader - Rust malware...") and status `Active` in
 **Integrations → Deployed**.
 
+### URLhaus (abuse.ch)
+
+Pulls recently added malicious URLs from abuse.ch's URLhaus project — URLs
+hosting malware payloads, C2 infrastructure, or exploit kit landing pages.
+Complements ThreatFox (which focuses on IOCs tied to specific malware
+families) with a URL-centric view of active distribution infrastructure.
+
+```yaml
+connector-urlhaus:
+  image: opencti/connector-urlhaus:latest
+  environment:
+    - OPENCTI_URL=http://opencti:8080
+    - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+    - CONNECTOR_ID=${CONNECTOR_URLHAUS_ID}
+    - CONNECTOR_NAME=Abuse.ch URLhaus
+    - CONNECTOR_SCOPE=urlhaus
+    - CONNECTOR_LOG_LEVEL=info
+    - URLHAUS_INTERVAL=3
+    - URLHAUS_CSV_URL=https://urlhaus.abuse.ch/downloads/csv_recent/
+    - URLHAUS_DEFAULT_X_OPENCTI_SCORE=80
+    - URLHAUS_IMPORT_OFFLINE=true
+    - URLHAUS_THREATS_FROM_LABELS=true
+  restart: always
+  depends_on:
+    opencti:
+      condition: service_healthy
+```
+
+`URLHAUS_THREATS_FROM_LABELS=true` links each imported URL to known malware
+families (e.g. Mirai, Mozi) based on URLhaus's own tags, automatically
+building relationships to existing Malware entities rather than importing
+URLs as isolated, unlinked observables.
+
+**Result:** confirmed via **Integrations → Deployed**, status `Active`,
+5.48K messages processed on first sync.
+
 ### Resource impact
 
 Measured with `docker stats --no-stream` shortly after each connector's
@@ -378,6 +414,7 @@ first sync:
 |---|---|---|
 | connector-threatfox | 163 MiB | 0.07% |
 | connector-misp-feed | *(not separately re-measured this session)* | — |
+| connector-urlhaus | 106.5 MiB | 14.98% (mid-sync) |
 
 Negligible next to the 11GB WSL2 ceiling — no measurable change to CPU
 temperature from either connector, consistent with the expectation that
