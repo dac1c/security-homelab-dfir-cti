@@ -98,6 +98,7 @@ standalone incident report, not just a log of commands run.
 |#|Title|Threat/Topic|Status|
 |-|-|-|-|
 |01| [KrustyLoader — Rust-Based Loader Linked to Ivanti Connect Secure Zero-Days](./cti-reports/01-krustyloader-ivanti-connectsecure.md) | CVE-2023-46805, CVE-2024-21887, T1190 | Complete |
+|02| [ArcaneDoor — Espionage-Focused Campaign Against Perimeter Network Devices](./cti-reports/02-arcanedoor-perimeter-devices.md) | Cisco ASA/FTD, T1133 | Complete |
 
 Built from indicators ingested into this lab's OpenCTI instance via the CIRCL
 OSINT MISP feed — not a summary of an existing report, but original analysis
