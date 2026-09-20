@@ -28,21 +28,21 @@ system and a Red Team system — connected only through the home network, to
 keep the exercises realistic and the defensive side genuinely isolated.
 
 ```
-┌─────────────────────────────────────────┐        ┌──────────────────────────┐
-│  DESKTOP — Blue Team / SOC               │        │  LAPTOP — Red Team / CTI │
-│  (Ryzen 7 3700X · 16GB · VMware WS Pro)  │        │  (i5 12th gen · VirtualBox)│
+┌─────────────────────────────────────────┐          ┌──────────────────────────┐
+│  DESKTOP — Blue Team / SOC               │         │  LAPTOP — Red Team / CTI │
+│  (Ryzen 7 3700X · 16GB · VMware WS Pro)  │         │  (i5 12th gen · VirtualBox)│
 │                                           │        │                          │
-│  ┌─────────────┐                         │        │  ┌────────────────────┐  │
+│  ┌─────────────┐                         │         │  ┌────────────────────┐  │
 │  │  pfSense CE  │  WAN (bridged) ─────────┼───home─┼─►│  Kali Linux        │  │
-│  │  firewall/GW │                         │  network│  (attacker)         │  │
+│  │  firewall/GW │                         │  network│  (attacker)         │   │
 │  └──────┬───────┘                         │        │  └────────────────────┘  │
 │         │ LAN 10.10.10.0/24               │        │  ┌────────────────────┐  │
 │  ┌──────┴───────┐   ┌──────────────────┐  │        │  │  OpenCTI / MISP    │  │
-│  │ Windows 11    │   │  Wazuh Manager   │  │        │  │  (planned)         │  │
-│  │ target        │──►│  SIEM/XDR        │  │        │  └────────────────────┘  │
-│  │ + Sysmon      │   │  + Dashboard     │  │        │                          │
-│  └───────────────┘   └──────────────────┘  │        │                          │
-└─────────────────────────────────────────┘        └──────────────────────────┘
+│  │ Windows 11    │   │  Wazuh Manager   │  │       │  │  (27 svc, 3 feeds)    │
+│  │ target        │──►│  SIEM/XDR        │  │       │  └────────────────────┘  │
+│  │ + Sysmon      │   │  + Dashboard     │  │       │                          │
+│  └───────────────┘   └──────────────────┘  │       │                          │
+└─────────────────────────────────────────┘          └──────────────────────────┘
 ```
 
 *(Full diagram with IPs and NAT flow in* [*`network-diagrams/`*](./network-diagrams)*)*
@@ -93,12 +93,24 @@ standalone incident report, not just a log of commands run.
 
 \---
 
+## CTI Reports so far
+
+|#|Title|Threat/Topic|Status|
+|-|-|-|-|
+|01| [KrustyLoader — Rust-Based Loader Linked to Ivanti Connect Secure Zero-Days](./cti-reports/01-krustyloader-ivanti-connectsecure.md) | CVE-2023-46805, CVE-2024-21887, T1190 | Complete |
+
+Built from indicators ingested into this lab's OpenCTI instance via the CIRCL
+OSINT MISP feed — not a summary of an existing report, but original analysis
+built from raw STIX/IOC data.
+
+\---
+
 ## What's next
 
 * \[x] Linux target with auditd, for cross-platform detection coverage
 * \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
 * \[x] Custom Wazuh correlation rules — rules 100011 and 100012 authored, debugged, and validated against live attack traffic
-* \[ ] OpenCTI populated with real, public threat intel for analyst-style reporting
+* \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — first analyst-style CTI report published
 * \[ ] SOAR automation with Shuffle
 
 \---
