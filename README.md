@@ -29,10 +29,10 @@ keep the exercises realistic and the defensive side genuinely isolated.
 
 ```
 ┌─────────────────────────────────────────┐          ┌──────────────────────────┐
-│  DESKTOP — Blue Team / SOC               │         │  LAPTOP — Red Team / CTI │
-│  (Ryzen 7 3700X · 16GB · VMware WS Pro)  │         │  (i5 12th gen · VirtualBox)│
-│                                           │        │                          │
-│  ┌─────────────┐                         │         │  ┌────────────────────┐  │
+│  DESKTOP — Blue Team / SOC              │          │  LAPTOP — Red Team / CTI │
+│  (Ryzen 7 3700X · 16GB · VMware WS Pro) │          │  (i5 12th gen · VirtualBox)│
+│                                         │          │                          │
+│  ┌─────────────┐                        │          │  ┌────────────────────┐  │
 │  │  pfSense CE  │  WAN (bridged) ─────────┼───home─┼─►│  Kali Linux        │  │
 │  │  firewall/GW │                         │  network│  (attacker)         │   │
 │  └──────┬───────┘                         │        │  └────────────────────┘  │
