@@ -86,6 +86,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |01| [External SMB Exposure \& Detection](./dfir-writeups/01-external-smb-exposure-purple-team-exercise.md)|T1046 Network Service Scanning, T1021.002 SMB/Admin Shares, T1078 Valid Accounts|Complete|
 |02| [SSH Brute-Force Attack Against Linux Target](dfir-writeups/02-ssh-bruteforce-linux-victim.md) | T1110 Brute Force, T1078 Valid Accounts | Complete |
 |03| [Lateral Movement via SMB Admin Shares to SYSTEM-Level Code Execution](./dfir-writeups/03-smb-admin-shares-lateral-movement.md) | T1021.002 SMB/Admin Shares, T1569.002 Service Execution, T1059.003 Windows Command Shell | Complete |
+|04| [Credential Dumping via Impacket secretsdump.py](./dfir-writeups/04-credential-dumping-impacket.md) | T1003 OS Credential Dumping, T1003.002 Security Account Manager, T1078 Valid Accounts | Complete |
 
 More exercises are added as the lab grows — each one documented as a
 standalone incident report, not just a log of commands run.
@@ -96,7 +97,7 @@ standalone incident report, not just a log of commands run.
 
 * \[x] Linux target with auditd, for cross-platform detection coverage
 * \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
-* \[x] Custom Wazuh correlation rules — rule 100011 authored, debugged, and validated against live attack traffic
+* \[x] Custom Wazuh correlation rules — rules 100011 and 100012 authored, debugged, and validated against live attack traffic
 * \[ ] OpenCTI populated with real, public threat intel for analyst-style reporting
 * \[ ] SOAR automation with Shuffle
 

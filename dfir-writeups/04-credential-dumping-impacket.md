@@ -149,9 +149,14 @@ each has legitimate, everyday explanations in isolation. The detection value
 is entirely in the **correlation** of all three within a short timeframe on
 the same host.
 
-*(Specific Wazuh `rule.id` values for the underlying 4672 and 7040 base
-rules were not yet recorded during this session and are noted as a
-follow-up item before the correlation rule below can be implemented.)*
+The underlying Wazuh base rules were identified as `rule.id: 67028`
+(Special privileges assigned to new logon, EventID 4672) and
+`rule.id: 61104` (Service startup type was changed, EventID 7040 — confirmed
+to fire identically for `RemoteRegistry` specifically). A custom correlation
+rule (`100012`) built on these two base rules is documented in
+[`detection-rules/100012-credential-dumping-correlation.md`](../detection-rules/100012-credential-dumping-correlation.md)
+and was validated against a repeat run of the attack — see Recommendations
+below.
 
 ---
 
@@ -175,22 +180,23 @@ follow-up item before the correlation rule below can be implemented.)*
 
 ## Recommendations
 
-**Proposed correlation rule (design; implementation deferred to next
-session):**
+**Implemented correlation rule:**
 
-- **Base rule:** EventID 4672 for `TargetUserName: Administrator` (or any
-  privileged account) combined with Type 3 (network) logon context from the
-  associated 4624
-- **Correlated rule:** `if_matched_sid` referencing the base rule, matched
-  against EventID 7040 for the `RemoteRegistry` service, within a
-  `timeframe` of 60–120 seconds, same agent (same-agent scoping is default
-  behavior for `if_matched_sid` and does not require an explicit
-  `<same_field>agent.id</same_field>` element — see the Bug #2 lesson from
-  the Writeup #03 Update section on rule 100011, which applies identically
-  here)
-- **Level:** 12 (matching the severity used for rule 100011)
-- **MITRE mapping:** T1003 (OS Credential Dumping), T1003.002 (Security
-  Account Manager), T1078 (Valid Accounts)
+Custom Wazuh rule `100012` (level 12) correlates `rule.id: 61104` (service
+startup type change) occurring within 120 seconds after a prior match on
+`rule.id: 67028` (privileged logon), on the same agent — same-agent scoping
+is default behavior for `if_matched_sid` and does not require an explicit
+`<same_field>agent.id</same_field>` element (see the Bug #2 lesson from the
+Writeup #03 Update section on rule 100011, which applies identically here).
+MITRE mapping: T1003 (OS Credential Dumping), T1003.002 (Security Account
+Manager), T1078 (Valid Accounts).
+
+The rule was validated by re-running `secretsdump.py` against
+Windows-Victim-01: two alerts fired (`rule.id: 100012`, level 12, `mail:
+true`), corresponding to the two `RemoteRegistry` 7040 events, both within
+the correlation window of the single 4672 privileged logon. Full rule design
+and build process are documented in
+[`detection-rules/100012-credential-dumping-correlation.md`](../detection-rules/100012-credential-dumping-correlation.md).
 
 **Additional recommendation:** Consider adding Sysmon Registry Event
 monitoring (Event ID 12/13/14) for `HKLM\SAM` and `HKLM\SECURITY` hive
