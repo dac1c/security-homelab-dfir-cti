@@ -78,15 +78,16 @@ Only **T1133** is present in the ingested dataset (as an Attack Pattern linked t
 ## Detection Opportunities
 
 1. **Retrospective hunting against the IP list.** Search historical firewall and proxy logs (for this lab, pfSense logs forwarded to Wazuh) for connections to or from any of the 60 addresses within the April 2024 window. A hit would be meaningful; absence is expected and should be documented as a negative result.
-2. **Convert the IOC list into a SIEM lookup.** Wazuh supports CDB lists that rules can reference, so the IP set could be loaded as a list and matched against firewall logs automatically. This would be the first case in this lab of CTI feeding detection rather than sitting alongside it, and is a candidate follow-up project.
+2. **Convert the IOC list into a SIEM lookup.** *(Implemented.)* The 60 IPv4 indicators were loaded as a Wazuh CDB list and matched against pfSense firewall logs by custom rules 100020 (source match) and 100021 (destination match). This is the first case in this lab of CTI feeding detection rather than sitting alongside it. Note that this is forward-looking alerting, not retrospective hunting: it only matches traffic logged after the pipeline was built. See [Rules 100020/100021](../detection-rules/100020-100021-arcanedoor-cdb-correlation.md).
 3. **Device-level integrity checking.** The Cisco-provided memory check is specific to ASA/FTD and cannot be applied in this lab, but the principle generalizes: perimeter devices need periodic integrity verification that does not depend on the device's own logging, since a compromised device may report itself as clean.
-4. **Forward perimeter device logs to the SIEM.** Edge devices are a frequent blind spot. Even without an ASA, the lab's pfSense firewall follows the same pattern and is the right place to practice this.
+4. **Forward perimeter device logs to the SIEM.** Edge devices are a frequent blind spot. Even without an ASA, the lab's pfSense firewall follows the same pattern and is the right place to practice this. *(Implemented for pfSense: firewall events are forwarded to Wazuh over syslog, which required a custom decoder. See the document linked above.)*
 
 ---
 
 ## Recommendations
 
 * **Do not block this IP list blindly.** Given its age and the presence of shared cloud address space, treat it as a hunting dataset with a documented retention window, not a permanent blocklist.
+* **CDB matching is alerting, not blocking.** In this lab the list drives level-10 alerts for triage only. Because the indicators are more than two years old, treat a hit as a lead that needs enrichment, expect false positives from reassigned addresses, and refresh or retire the list on a documented schedule.
 * **Filter indicators at ingestion.** Drop single-word text indicators and require a minimum specificity for text-type patterns before pushing anything from OpenCTI into detection tooling.
 * **Treat edge devices as monitored assets.** Ensure firewalls and VPN appliances forward logs to a central SIEM and have a defined firmware-integrity check schedule.
 * **Prioritize patching for persistence-capable vulnerabilities.** A flaw that requires prior admin access is easy to under-rate, but it is precisely what turns a one-time intrusion into a durable foothold.
