@@ -115,6 +115,7 @@ built from raw STIX/IOC data.
 |[100011](./detection-rules/100011-psexec-lateral-movement-correlation.md)|PsExec-style lateral movement (service creation + suspicious process)|T1021.002, T1569.002, T1059.003|Correlation|
 |[100012](./detection-rules/100012-credential-dumping-correlation.md)|Remote credential dumping (privileged logon + service config change)|T1003, T1003.002, T1078|Correlation|
 |[100020–100023](./detection-rules/100020-100023-arcanedoor-cdb-correlation.md)|pfSense traffic from/to ArcaneDoor IPs, tiered by Talos classification: actor-controlled (level 12) and multi-tenant (level 8) (CTI Report #02)|T1133|CTI-driven|
+|[100024 / 100025](./detection-rules/100024-100025-secretblizzard-cdb-correlation.md)|pfSense traffic from/to Secret Blizzard AiTM IP (CTI Report #03)|T1557|CTI-driven|
 |[5763 / 40112](./detection-rules/5763-40112-ssh-bruteforce-builtin-rules.md)|SSH brute force (Wazuh built-in rules, analyzed)|T1110|Built-in|
 
 \---
