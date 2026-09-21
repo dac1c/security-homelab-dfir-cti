@@ -113,7 +113,7 @@ built from raw STIX/IOC data.
 |[100010](./detection-rules/100010-external-ntlm-logon.md)|NTLM network logon from outside the lab LAN|T1550.002|Custom|
 |[100011](./detection-rules/100011-psexec-lateral-movement-correlation.md)|PsExec-style lateral movement (service creation + suspicious process)|T1021.002, T1569.002, T1059.003|Correlation|
 |[100012](./detection-rules/100012-credential-dumping-correlation.md)|Remote credential dumping (privileged logon + service config change)|T1003, T1003.002, T1078|Correlation|
-|[100020 / 100021](./detection-rules/100020-100021-arcanedoor-cdb-correlation.md)|pfSense traffic from/to IPs on the ArcaneDoor CDB list (CTI Report #02)|T1133|CTI-driven|
+|[100020–100023](./detection-rules/100020-100023-arcanedoor-cdb-correlation.md)|pfSense traffic from/to ArcaneDoor IPs, tiered by Talos classification: actor-controlled (level 12) and multi-tenant (level 8) (CTI Report #02)|T1133|CTI-driven|
 |[5763 / 40112](./detection-rules/5763-40112-ssh-bruteforce-builtin-rules.md)|SSH brute force (Wazuh built-in rules, analyzed)|T1110|Built-in|
 
 \---
@@ -122,7 +122,7 @@ built from raw STIX/IOC data.
 
 * \[x] Linux target with auditd, for cross-platform detection coverage
 * \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
-* \[x] Custom Wazuh rules — correlation rules 100011 and 100012, plus rules 100020/100021, which match pfSense firewall logs against a CDB list built from CTI Report #02 (the first case of CTI directly feeding detection). Validated against live traffic; 100021 was validated with logtest only
+* \[x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
 * \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — two analyst-style CTI reports published
 * \[ ] SOAR automation with Shuffle
 
