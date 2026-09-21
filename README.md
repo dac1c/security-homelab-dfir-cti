@@ -56,10 +56,10 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |Layer|Tools|
 |-|-|
 |Hypervisors|VMware Workstation Pro, Oracle VirtualBox|
-|Network / Firewall|pfSense CE|
-|SIEM / XDR|Wazuh (Indexer + Manager + Dashboard)|
+|Network / Firewall|pfSense CE (firewall logs forwarded to Wazuh over syslog)|
+|SIEM / XDR|Wazuh (Indexer + Manager + Dashboard), custom decoder, rules and CDB threat-intel lists|
 |Endpoint telemetry|Sysmon (SwiftOnSecurity config)|
-|Offensive tooling|Kali Linux, nmap, smbclient, enum4linux, Impacket (psexec)|
+|Offensive tooling|Kali Linux, nmap, smbclient, enum4linux, Impacket (psexec, secretsdump)|
 |CTI (in progress)|OpenCTI, MISP|
 |SOAR (planned)|Shuffle|
 |Infrastructure (in progress)|Docker, Kubernetes|
@@ -71,7 +71,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |Folder|Contents|
 |-|-|
 |[`dfir-writeups/`](./dfir-writeups)|Full incident-style reports for each purple team exercise — timeline, technical findings, detection analysis, root cause, recommendations|
-|[`detection-rules/`](./detection-rules)|Custom Wazuh/Sigma detection rules written for specific attack patterns observed in this lab|
+|[`detection-rules/`](./detection-rules)|Custom Wazuh detection rules, decoders and threat-intel lists written for specific attack patterns observed in this lab
 |[`network-diagrams/`](./network-diagrams)|Network topology and NAT/routing diagrams|
 |[`cti-reports/`](./cti-reports)|Threat intelligence analyses (APT/malware campaigns) using OpenCTI/MISP|
 |[`docs/`](./docs)|Lab build documentation and architecture notes|
@@ -106,12 +106,24 @@ built from raw STIX/IOC data.
 
 \---
 
+## Detection rules so far
+
+|Rule|Detects|MITRE|Type|
+|-|-|-|-|
+|[100010](./detection-rules/100010-external-ntlm-logon.md)|NTLM network logon from outside the lab LAN|T1550.002|Custom|
+|[100011](./detection-rules/100011-psexec-lateral-movement-correlation.md)|PsExec-style lateral movement (service creation + suspicious process)|T1021.002, T1569.002, T1059.003|Correlation|
+|[100012](./detection-rules/100012-credential-dumping-correlation.md)|Remote credential dumping (privileged logon + service config change)|T1003, T1003.002, T1078|Correlation|
+|[100020 / 100021](./detection-rules/100020-100021-arcanedoor-cdb-correlation.md)|pfSense traffic from/to IPs on the ArcaneDoor CDB list (CTI Report #02)|T1133|CTI-driven|
+|[5763 / 40112](./detection-rules/5763-40112-ssh-bruteforce-builtin-rules.md)|SSH brute force (Wazuh built-in rules, analyzed)|T1110|Built-in|
+
+\---
+
 ## What's next
 
 * \[x] Linux target with auditd, for cross-platform detection coverage
 * \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
-* \[x] Custom Wazuh correlation rules — rules 100011 and 100012 authored, debugged, and validated against live attack traffic
-* \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — first analyst-style CTI report published
+* \[x] Custom Wazuh rules — correlation rules 100011 and 100012, plus rules 100020/100021, which match pfSense firewall logs against a CDB list built from CTI Report #02 (the first case of CTI directly feeding detection). Validated against live traffic; 100021 was validated with logtest only
+* \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — two analyst-style CTI reports published
 * \[ ] SOAR automation with Shuffle
 
 \---
