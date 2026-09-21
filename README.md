@@ -99,6 +99,7 @@ standalone incident report, not just a log of commands run.
 |-|-|-|-|
 |01| [KrustyLoader — Rust-Based Loader Linked to Ivanti Connect Secure Zero-Days](./cti-reports/01-krustyloader-ivanti-connectsecure.md) | CVE-2023-46805, CVE-2024-21887, T1190 | Complete |
 |02| [ArcaneDoor — Espionage-Focused Campaign Against Perimeter Network Devices](./cti-reports/02-arcanedoor-perimeter-devices.md) | Cisco ASA/FTD, T1133 | Complete |
+|03| [Frozen in Transit — Secret Blizzard's ISP-Level AiTM Campaign](./cti-reports/03-secret-blizzard-frozen-in-transit.md) | Turla/Secret Blizzard, T1557, ApolloShadow | Complete |
 
 Built from indicators ingested into this lab's OpenCTI instance via the CIRCL
 OSINT MISP feed — not a summary of an existing report, but original analysis
@@ -123,7 +124,7 @@ built from raw STIX/IOC data.
 * \[x] Linux target with auditd, for cross-platform detection coverage
 * \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
 * \[x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
-* \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — two analyst-style CTI reports published
+* \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — three analyst-style CTI reports published
 * \[ ] SOAR automation with Shuffle
 
 \---
