@@ -1,7 +1,7 @@
 # Custom Rule 100010 — External-Source NTLM Network Logon
 
 **Rule ID:** 100010 · **Level:** 12 · **Parent rule:** 92657
-**MITRE ATT&CK:** T1075 (Pass the Hash) · T1550.002 (Use Alternate Authentication Material: Pass the Hash)
+**MITRE ATT&CK:** T1550.002 (Use Alternate Authentication Material: Pass the Hash)
 
 ## Purpose
 
@@ -16,6 +16,9 @@ trusted LAN (`10.10.10.0/24`) — i.e., traffic that has crossed the pfSense
 perimeter from the "external" side, matching a realistic external-attacker
 scenario.
 
+
+> **Note (verified 22 September 2026):** This rule originally listed T1075 (Pass the Hash) alongside T1550.002. T1075 is a deprecated/revoked object in the current MITRE ATT&CK release, consolidated into T1550.002 (Use Alternate Authentication Material: Pass the Hash). Only T1550.002 is now referenced.
+
 ## Final rule
 
 ```xml
@@ -24,8 +27,7 @@ scenario.
     <if_sid>92657</if_sid>
     <field name="win.eventdata.ipAddress" negate="yes">^10\.10\.10\.</field>
     <description>NTLM Network Logon outside local network (Possible Pass-the-Hash / Lateral Movement)</description>
-    <mitre>
-      <id>T1075</id>
+      <mitre>
       <id>T1550.002</id>
     </mitre>
   </rule>

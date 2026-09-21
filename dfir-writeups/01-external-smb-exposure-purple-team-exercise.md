@@ -1,10 +1,5 @@
 # Purple Team Exercise #1: Simulated External SMB Exposure & Detection
 
-**Author:** Haris Dacić
-**Date:** August 16, 2026
-**Lab Environment:** Self-hosted Home Lab (pfSense + Wazuh SIEM + Windows 11 target)
-**Status:** Draft — pending final event correlation
-
 ---
 
 ## 1. Executive Summary
