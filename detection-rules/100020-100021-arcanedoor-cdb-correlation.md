@@ -182,6 +182,7 @@ Custom configuration also survived an accidental Ctrl+Alt+Del on the Wazuh VM ea
 
 - **Alerting, not blocking or hunting.** The rules only see events logged after the pipeline existed. They do not search historical traffic from the April 2024 campaign window (see Detection Opportunity 1 in the CTI report).
 - **Indicator age.** The addresses come from an April 2024 publication. Reassigned cloud/VPS addresses can produce hits unrelated to ArcaneDoor, so hits need enrichment and triage.
+- **Mixed-confidence list.** The 60 addresses combine 22 that Talos classifies as likely actor-controlled and 38 classified as multi-tenant, some of which may be shared or anonymization infrastructure. Both groups currently alert at level 10, so a multi-tenant hit is weaker evidence than an actor-controlled one.
 - **Coverage.** Only what pfSense logs is seen (Firewall Events, sent as remote syslog). Only IPv4 TCP/UDP lines are decoded; ICMP and IPv6 are not.
 - **Syslog transport.** UDP syslog has no delivery guarantee or authentication. `allowed-ips` restricts the accepted source address but does not authenticate the sender.
 - **Manual list maintenance.** Updating the list means editing the file and restarting the manager (see build lesson 6). There is no automatic sync from OpenCTI.

@@ -54,30 +54,35 @@ The IP indicators originate from an April 2024 publication. Roughly 29 months la
 
 ### Additional context from public reporting (not in the ingested dataset)
 
-The following details come from general public knowledge of this campaign and are **not** contained in the OpenCTI dataset. They should be verified against Cisco Talos' original publication before being relied on:
+The following details are **not** contained in the OpenCTI dataset. They were checked against Cisco Talos' original publication on 21 September 2026:
 
 * Talos tracked the actor as **UAT4356**, and Microsoft separately as **STORM-1849**.
 * The campaign used two custom implants, commonly named **Line Dancer** (an in-memory component) and **Line Runner** (a persistence mechanism).
 * The vulnerabilities in the ingested text correspond to **CVE-2024-20353** (denial of service) and **CVE-2024-20359** (persistence via the legacy preload feature).
-* Talos assessed the actor as state-sponsored.
+* Talos assessed with high confidence that the actor is state-sponsored, based on victimology, tradecraft and the chaining of zero-days.
+* Talos could not determine the initial access vector and reported no evidence of pre-authentication exploitation. CVE-2024-20353 was used, in at least one case, to force a reboot that triggered installation of Line Runner.
+* Talos dates the infrastructure to early November 2023, most activity to December 2023 – early January 2024, and early capability development to July 2023.
+* Talos' IOC list separates 22 "likely actor-controlled" IPs from 38 "multi-tenant" IPs and warns that some addresses are shared or anonymization infrastructure rather than attacker-owned. This report's appendix does not record that distinction.
+* In a September 2025 update, Talos assessed with high confidence that new activity against ASA 5500-X devices (CVE-2025-20333, CVE-2025-20362, CVE-2025-20363) is linked to the same actor.
 
 ---
 
 ## MITRE ATT&CK Mapping
 
-Only **T1133** is present in the ingested dataset (as an Attack Pattern linked to the ArcaneDoor Intrusion Set). The others are analyst-assigned from the behavior described above and are tentative.
+Only **T1133** is present in the ingested dataset (as an Attack Pattern linked to the ArcaneDoor Intrusion Set). T1133 comes from the dataset; Cisco Talos' own published technique list does not include it. The other rows are techniques published by Talos in the original blog post (checked 21 September 2026). T1190 is deliberately not assigned: Talos reports that the initial access vector was not determined.
 
 | Tactic | Technique | Source |
 |---|---|---|
-| Persistence / Initial Access | **T1133** — External Remote Services | Dataset |
-| Initial Access | **T1190** — Exploit Public-Facing Application | Analyst-assigned |
-| Defense Evasion | **T1601** — Modify System Image | Analyst-assigned, tentative |
+| Persistence | **T1037** — Boot or Logon Initialization Scripts | Cisco Talos (Line Runner) |
+| Persistence / Impact | **T1653** — Power Settings | Cisco Talos (forced reboot via CVE-2024-20353) |
+| Defense Evasion | **T1562.001** — Impair Defenses: Disable or Modify Tools | Cisco Talos (syslog disabled) |
+| Credential Access / Defense Evasion | **T1556** — Modify Authentication Process | Cisco Talos (AAA hook) |
 
 ---
 
 ## Detection Opportunities
 
-1. **Retrospective hunting against the IP list.** Search historical firewall and proxy logs (for this lab, pfSense logs forwarded to Wazuh) for connections to or from any of the 60 addresses within the April 2024 window. A hit would be meaningful; absence is expected and should be documented as a negative result.
+1. **Retrospective hunting against the IP list.** Search historical firewall and proxy logs (for this lab, pfSense logs forwarded to Wazuh) for connections to or from any of the 60 addresses between roughly November 2023 (earliest infrastructure per Talos) and the April 2024 disclosure. A hit would be meaningful; absence is expected and should be documented as a negative result.
 2. **Convert the IOC list into a SIEM lookup.** *(Implemented.)* The 60 IPv4 indicators were loaded as a Wazuh CDB list and matched against pfSense firewall logs by custom rules 100020 (source match) and 100021 (destination match). This is the first case in this lab of CTI feeding detection rather than sitting alongside it. Note that this is forward-looking alerting, not retrospective hunting: it only matches traffic logged after the pipeline was built. See [Rules 100020/100021](../detection-rules/100020-100021-arcanedoor-cdb-correlation.md).
 3. **Device-level integrity checking.** The Cisco-provided memory check is specific to ASA/FTD and cannot be applied in this lab, but the principle generalizes: perimeter devices need periodic integrity verification that does not depend on the device's own logging, since a compromised device may report itself as clean.
 4. **Forward perimeter device logs to the SIEM.** Edge devices are a frequent blind spot. Even without an ASA, the lab's pfSense firewall follows the same pattern and is the right place to practice this. *(Implemented for pfSense: firewall events are forwarded to Wazuh over syslog, which required a custom decoder. See the document linked above.)*
@@ -98,7 +103,7 @@ Only **T1133** is present in the ingested dataset (as an Attack Pattern linked t
 
 * Cisco Talos, ArcaneDoor publication (April 2024), via the CIRCL OSINT MISP feed as ingested into this lab's OpenCTI instance on 15–16 September 2026
 * Cisco security advisory excerpts contained in the ingested dataset (paraphrased in this report)
-* Public reporting on UAT4356 / STORM-1849 (context only, not in the ingested dataset; see the verification note above)
+* Cisco Talos, "ArcaneDoor - New espionage-focused campaign found targeting perimeter network devices" (24 April 2024, updated September 2025): https://blog.talosintelligence.com/arcanedoor-new-espionage-focused-campaign-found-targeting-perimeter-network-devices/ — used to verify actor names, implants, CVEs, timeline and IOC classification
 
 > **Analyst note:** The ingested MISP event contained IP indicators, an intrusion set, one ATT&CK technique, and advisory excerpts, but no narrative campaign analysis. The infrastructure clustering analysis, the indicator-quality and age findings, the detection opportunities, and the recommendations are original work built on the raw data. Details drawn from outside the dataset are explicitly labeled as such.
 
