@@ -1,9 +1,9 @@
-# Cybersecurity Home Lab — DFIR \& CTI Focus
+# Cybersecurity Home Lab — DFIR & CTI Focus
 
 **Author:** Haris Dacić — [LinkedIn](https://www.linkedin.com/in/dacicharis/) · [TryHackMe](https://tryhackme.com/p/harisD)
-**Focus areas:** Digital Forensics \& Incident Response · Cyber Threat Intelligence · SOC Operations
+**Focus areas:** Digital Forensics & Incident Response · Cyber Threat Intelligence · SOC Operations
 
-\---
+---
 
 ## Why this exists
 
@@ -19,7 +19,7 @@ government web portal — formally confirmed and acted on by the national Data
 Protection Agency (AZLP), resulting in a compliance inspection of two state
 institutions. This lab is that same instinct, applied systematically.
 
-\---
+---
 
 ## Architecture
 
@@ -49,7 +49,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 
 ![Homelab Network Topology](network-diagrams/homelab-topology.svg)
 
-\---
+---
 
 ## Stack
 
@@ -61,10 +61,10 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |Endpoint telemetry|Sysmon (SwiftOnSecurity config)|
 |Offensive tooling|Kali Linux, nmap, smbclient, enum4linux, Impacket (psexec, secretsdump)|
 |CTI (in progress)|OpenCTI, MISP|
-|SOAR (planned)|Shuffle|
+|SOAR|Shuffle (Wazuh alerts forwarded to Slack via webhook, working)|
 |Infrastructure (in progress)|Docker, Kubernetes|
 
-\---
+---
 
 ## Repository structure
 
@@ -74,16 +74,16 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |[`detection-rules/`](./detection-rules)|Custom Wazuh detection rules, decoders and threat-intel lists written for specific attack patterns observed in this lab
 |[`network-diagrams/`](./network-diagrams)|Network topology and NAT/routing diagrams|
 |[`cti-reports/`](./cti-reports)|Threat intelligence analyses (APT/malware campaigns) using OpenCTI/MISP|
-|[`docs/`](./docs)|Lab build documentation and architecture notes|
+|[`docs/`](./docs)|Lab build documentation, [SOAR integration and detection-engineering lessons learned](./docs/soar-shuffle-and-lessons-learned.md)|
 |[`screenshots/`](./screenshots)|Supporting evidence referenced in writeups|
 
-\---
+---
 
 ## Exercises so far
 
 |#|Title|Techniques|Status|
 |-|-|-|-|
-|01| [External SMB Exposure \& Detection](./dfir-writeups/01-external-smb-exposure-purple-team-exercise.md)|T1046 Network Service Scanning, T1021.002 SMB/Admin Shares, T1078 Valid Accounts|Complete|
+|01| [External SMB Exposure & Detection](./dfir-writeups/01-external-smb-exposure-purple-team-exercise.md)|T1046 Network Service Scanning, T1021.002 SMB/Admin Shares, T1078 Valid Accounts|Complete|
 |02| [SSH Brute-Force Attack Against Linux Target](dfir-writeups/02-ssh-bruteforce-linux-victim.md) | T1110 Brute Force, T1078 Valid Accounts | Complete |
 |03| [Lateral Movement via SMB Admin Shares to SYSTEM-Level Code Execution](./dfir-writeups/03-smb-admin-shares-lateral-movement.md) | T1021.002 SMB/Admin Shares, T1569.002 Service Execution, T1059.003 Windows Command Shell | Complete |
 |04| [Credential Dumping via Impacket secretsdump.py](./dfir-writeups/04-credential-dumping-impacket.md) | T1003 OS Credential Dumping, T1003.002 Security Account Manager, T1078 Valid Accounts | Complete |
@@ -91,7 +91,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 More exercises are added as the lab grows — each one documented as a
 standalone incident report, not just a log of commands run.
 
-\---
+---
 
 ## CTI Reports so far
 
@@ -105,7 +105,7 @@ Built from indicators ingested into this lab's OpenCTI instance via the CIRCL
 OSINT MISP feed — not a summary of an existing report, but original analysis
 built from raw STIX/IOC data.
 
-\---
+---
 
 ## Detection rules so far
 
@@ -118,17 +118,22 @@ built from raw STIX/IOC data.
 |[100024 / 100025](./detection-rules/100024-100025-secretblizzard-cdb-correlation.md)|pfSense traffic from/to Secret Blizzard AiTM IP (CTI Report #03)|T1557|CTI-driven|
 |[5763 / 40112](./detection-rules/5763-40112-ssh-bruteforce-builtin-rules.md)|SSH brute force (Wazuh built-in rules, analyzed)|T1110|Built-in|
 
-\---
+---
+
+**Status note on rules 100020-100025:** the rules and CDB lists are validated with logtest against a hand-built pfSense log line. A full live end-to-end alert was not completed. Debugging showed that live pfSense syslog arrives without a hostname field, that pass rules are not logged by default, and that the custom IPv4 decoder does not yet handle ICMP lines. Full findings are in the [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
+
+---
 
 ## What's next
 
-* \[x] Linux target with auditd, for cross-platform detection coverage
-* \[x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
-* \[x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
-* \[x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — three analyst-style CTI reports published
-* \[ ] SOAR automation with Shuffle
+* [x] Linux target with auditd, for cross-platform detection coverage
+* [x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
+* [x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
+* [x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — three analyst-style CTI reports published
+* [x] SOAR automation with Shuffle: Wazuh alerts (level 7 and above) are forwarded to Slack #soc-alerts, verified with a real Wazuh alert end to end. Details in [docs](./docs/soar-shuffle-and-lessons-learned.md)
+* [ ] Kubernetes lab (planned)
 
-\---
+---
 
 ## Contact
 
