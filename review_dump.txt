@@ -1,0 +1,939 @@
+# Purple Team Exercise #1: Simulated External SMB Exposure & Detection
+
+**Author:** Haris Dacić
+**Date:** August 16, 2026
+**Lab Environment:** Self-hosted Home Lab (pfSense + Wazuh SIEM + Windows 11 target)
+**Status:** Draft — pending final event correlation
+
+---
+
+## 1. Executive Summary
+
+This exercise simulated an external attacker discovering and accessing an exposed
+SMB (file sharing) service on a Windows 11 host sitting behind a segmented,
+firewalled network. The goal was twofold: (1) validate that a purposely exposed
+service could be discovered and accessed the way a real external attacker would,
+and (2) confirm that the defensive stack (Sysmon + Wazuh SIEM) correctly logged
+and flagged the activity for a SOC analyst to review.
+
+**Result:** The service was successfully discovered, authenticated against, and
+enumerated. The SIEM detected the authentication event in real time and
+automatically raised an alert consistent with a possible credential-based lateral
+movement technique (NTLM network logon), demonstrating that the detection layer
+functions as intended even in a fully self-built, non-commercial lab.
+
+---
+
+## 2. Scope & Objective
+
+| Item | Detail |
+|---|---|
+| Attacker system | Kali Linux (VirtualBox, physical laptop, bridged to home LAN) |
+| Target system | Windows 11 Pro, standalone workgroup member (VMware, physical desktop) |
+| Perimeter | pfSense CE 2.8.1 (WAN bridged to home network, LAN on isolated `10.10.10.0/24`) |
+| Exposed service | SMB / TCP 445, NAT port-forwarded from pfSense WAN to target |
+| Monitoring | Sysmon (SwiftOnSecurity config) + Wazuh 4.14 agent, forwarding to Wazuh Manager |
+| Objective | Simulate external discovery + authenticated access to a file-sharing service, and validate detection coverage |
+
+**Network Topology**
+
+```
+Kali (Attacker)                 Home Router                pfSense (Firewall)              Windows 11 (Target)
+192.168.1.234        ⇄        192.168.1.0/24        ⇄     WAN 192.168.1.152                10.10.10.100
+(laptop, WiFi bridged)                                     LAN 10.10.10.1/24    ⇄           (Sysmon + Wazuh agent)
+                                                             NAT: WAN:445 → 10.10.10.100:445
+```
+
+---
+
+## 3. Timeline
+
+| Time (UTC+2) | Event | Source |
+|---|---|---|
+| T+0 | Port scan against pfSense WAN address, port 445 | Kali / nmap |
+| T+0 | Initial scan reports `filtered` — no ping response received before scan | Kali / nmap |
+| T+1 | Root cause identified: nmap's default host-discovery (ICMP ping) is not permitted to the target through NAT; rescanned with `-Pn` | Kali / nmap |
+| T+2 | Port confirmed `open` — `445/tcp open microsoft-ds` | Kali / nmap |
+| T+3 | `smbclient -L` attempted with valid local credentials | Kali |
+| T+3 | Authentication succeeded; shares enumerated: `ADMIN$`, `C$`, `IPC$` | Kali |
+| T+3 | **Wazuh Manager logged Event ID 4624** (successful logon), Logon Type 3 (Network), source IP `192.168.1.234`, workstation name `KALI` | Wazuh Dashboard |
+| T+3 | Wazuh rule engine auto-generated an alert: *"Successful Remote Logon Detected... NTLM authentication, possible pass-the-hash attack"* | Wazuh Dashboard |
+
+---
+
+## 4. Technical Findings
+
+### 4.1 Reconnaissance
+```bash
+nmap -sV -p 445 -Pn 192.168.1.152
+```
+```
+PORT    STATE SERVICE      VERSION
+445/tcp open  microsoft-ds
+```
+
+### 4.2 SMB Share Enumeration (authenticated)
+```bash
+smbclient -L //192.168.1.152 -U victim
+```
+```
+Sharename       Type      Comment
+---------       ----      -------
+ADMIN$          Disk      Remote Admin
+C$              Disk      Default share
+IPC$            IPC       Remote IPC
+```
+
+> **Analyst note:** Exposure of `C$` and `ADMIN$` to an authenticated network
+> user is significant — these administrative shares grant full remote access
+> to the system drive and Windows directory. In a real engagement, valid
+> credentials plus this share access is a direct path to remote code execution
+> via tools such as Impacket's `psexec.py` or PsExec.
+
+### 4.3 Wazuh Detection — Event ID 4624
+
+Wazuh logged **5 separate Event ID 4624 entries** across the exercise. Two are
+detailed below, representing the two distinct phases of the SMB interaction:
+the initial anonymous negotiation, and the subsequent authenticated session.
+
+**Phase 1 — Anonymous session negotiation** (precedes authentication; part of
+the normal SMB handshake before credentials are supplied)
+
+| Field | Value |
+|---|---|
+| `agent.name` | windows-victim-01 |
+| `data.win.eventdata.ipAddress` | 192.168.1.234 |
+| `data.win.eventdata.workstationName` | KALI |
+| `data.win.eventdata.targetUserName` | ANONYMOUS LOGON |
+| `data.win.eventdata.logonType` | 3 (Network) |
+| `data.win.eventdata.authenticationPackageName` | NTLM |
+| `data.win.eventdata.lmPackageName` | NTLM V1 |
+| `rule.description` | Successful Remote Logon Detected - NTLM authentication, possible pass-the-hash attack |
+
+**Phase 2 — Authenticated session** (after `smbclient -U victim` supplied valid credentials)
+
+| Field | Value |
+|---|---|
+| `agent.name` | windows-victim-01 |
+| `data.win.eventdata.ipAddress` | 192.168.1.234 |
+| `data.win.eventdata.ipPort` | 32812 |
+| `data.win.eventdata.workstationName` | KALI |
+| `data.win.eventdata.targetUserName` | victim |
+| `data.win.eventdata.targetUserSid` | S-1-5-21-3757128122-3842374592-1145511230-1001 |
+| `data.win.eventdata.logonType` | 3 (Network) |
+| `data.win.eventdata.authenticationPackageName` | NTLM |
+| `data.win.eventdata.lmPackageName` | **NTLM V2** |
+| `data.win.eventdata.logonProcessName` | NtLmSsp |
+| `rule.description` | Successful Remote Logon Detected - User:\victim - NTLM authentication, possible pass-the-hash attack |
+
+> **Analyst note:** The two phases used different NTLM sub-versions — the
+> anonymous negotiation fell back to the weaker **NTLMv1**, while the
+> credentialed session correctly negotiated **NTLMv2**. This is expected
+> protocol behavior, but it's a useful detail to check in real investigations:
+> a fully authenticated session that only manages to negotiate NTLMv1 is a
+> stronger anomaly signal than one that negotiates NTLMv2, since NTLMv1
+> is far more susceptible to relay and offline cracking attacks.
+
+---
+
+## 5. Detection Analysis — Analyst Interpretation
+
+Wazuh's built-in rule set flagged this authentication as a **possible
+pass-the-hash / lateral movement indicator**. Taken in isolation, that
+classification is reasonable: Logon Type 3 + NTLM (rather than Kerberos) is a
+common signature of both legitimate SMB file access *and* credential-based
+attacks, because standalone/workgroup machines fall back to NTLM by default.
+
+**Why this was assessed as benign in this exercise:**
+- The source (Kali, `192.168.1.234`) is a known, authorized test system on the
+  same physical network segment.
+- The credentials used were the target's own locally configured account —
+  no credential theft occurred.
+- The activity occurred within a controlled, time-boxed test window.
+
+**Why an analyst should not dismiss this pattern automatically in production:**
+- NTLMv1 (seen here as `lmPackageName: NTLM V1`) is a legacy, cryptographically
+  weak protocol vulnerable to relay and cracking attacks. Its presence on a
+  production host — regardless of who is connecting — is itself a finding
+  worth remediating.
+- An identical log signature (Logon Type 3, NTLM, unfamiliar source IP) in a
+  real environment, without a known/scheduled test, would warrant immediate
+  escalation.
+
+This distinction — *same telemetry, different conclusion based on context* —
+is the core judgment call a SOC analyst makes dozens of times per shift.
+
+---
+
+## 6. Root Cause: Why the Port Was Reachable
+
+*(Condensed troubleshooting summary — full detail available on request)*
+
+1. LAN was re-addressed from `192.168.1.0/24` to `10.10.10.0/24` to resolve a
+   subnet collision with the home network (both had originally used the same
+   RFC1918 range, which would have broken routing).
+2. pfSense WAN was switched from VMware NAT to a bridged adapter, giving it a
+   real address on the home network so the attacker laptop could reach it.
+3. A destination NAT (port forward) rule was added: WAN:445 → 10.10.10.100:445.
+4. Initial access attempts failed silently. Packet capture on the pfSense LAN
+   interface confirmed SYN packets reaching the target with **no response**,
+   isolating the fault to the target host rather than the network path.
+5. Root cause: Windows Defender Firewall's **SMB-In rule scope** was restricted
+   to `LocalSubnet` under the *Private* network profile. Because NAT preserves
+   the original source IP, the target saw the connection as originating from
+   `192.168.1.234` — outside its own `10.10.10.0/24` subnet — and silently
+   dropped it despite the rule being "enabled."
+6. Resolution: widened the SMB-In rule's remote address scope to `Any`.
+
+**Takeaway:** a correctly forwarded, "open" port at the network layer can still
+be invisible at the host layer due to host-based firewall scoping — a reminder
+that network and host security must be validated independently, not assumed
+from one another.
+
+---
+
+## 7. Recommendations (as if reporting to a client)
+
+1. Disable NTLMv1 and enforce NTLMv2/Kerberos where possible.
+2. Restrict or disable `C$`/`ADMIN$` administrative share access for non-admin
+   accounts; monitor access to these shares explicitly.
+3. Do not expose SMB (445) directly to untrusted networks; if remote file
+   access is required, use a VPN.
+4. Tune the Wazuh pass-the-hash rule to reduce noise from expected internal
+   NTLM traffic while preserving sensitivity to external sources.
+
+---
+
+## 8. Appendix — Environment Notes
+
+- Wazuh 4.14.7, single-node (Indexer + Manager + Dashboard)
+- Sysmon config: SwiftOnSecurity baseline
+- pfSense CE 2.8.1
+
+*(Additional raw event exports and network diagram to be attached.)*
+================ 
+# DFIR Writeup #02: SSH Brute-Force Attack Against Linux Target (Purple Team Exercise)
+
+## Executive Summary
+
+A simulated external attacker used the `hydra` password-cracking tool to perform a
+brute-force attack against an internet-exposed SSH service on a Linux host
+(`Linux-Victim-01`). The attack originated from a Kali Linux attack box on the
+external ("home") network and reached the target through a firewall/NAT device
+acting as the network perimeter. After 8 failed authentication attempts using a
+custom password list, the attacker successfully authenticated as the local user
+`victim`.
+
+The Wazuh SIEM, monitoring the target via its Linux agent and the system's
+`journald`/`sshd` logs, detected both stages of the attack using **built-in
+(default) detection rules** — no custom rule development was required for this
+exercise, unlike Writeup #01. The attack was classified under MITRE ATT&CK
+technique **T1110 (Brute Force)**, escalating to **T1078 (Valid Accounts)** once
+authentication succeeded.
+
+This exercise also surfaced a network configuration gap (missing NAT rule) during
+setup, which is documented below as it materially affected the attack path and
+is a useful troubleshooting reference.
+
+## Scope & Objective
+
+**Objective:** Simulate an external SSH brute-force attack against a Linux host
+and validate that the SIEM correctly detects both the failed-attempt pattern and
+the resulting successful compromise, using out-of-the-box detection content.
+
+**In scope:**
+- `Linux-Victim-01` (Ubuntu Server, target)
+- `pfSense-Firewall` (perimeter firewall/NAT)
+- Kali Linux (attacker box, external network segment)
+- Wazuh Manager (SIEM/detection)
+
+**Out of scope:** Post-exploitation activity after the successful login (privilege
+escalation, persistence, lateral movement) — this exercise focuses on initial
+access via credential brute-forcing and its detection.
+
+## Environment / Network Topology
+
+| Host | Role | Network | IP |
+|---|---|---|---|
+| Kali Linux | Attacker | External (home LAN) | 192.168.1.234 |
+| pfSense-Firewall | Perimeter FW / NAT | WAN / LAN | WAN: 192.168.1.152 · LAN: 10.10.10.1 |
+| Linux-Victim-01 | Target | Internal LAN | 10.10.10.105 |
+| Wazuh-Manager | SIEM | Internal LAN | 10.10.10.102 |
+
+The attacker does not have direct routing to the internal `10.10.10.0/24` segment;
+all traffic must traverse the pfSense WAN interface and be forwarded via NAT to
+reach the target, mirroring a realistic scenario where only the firewall's public
+IP is reachable from outside.
+
+## Timeline
+
+| Time (local) | Event |
+|---|---|
+| T+0 | Port scan against firewall WAN IP confirms `22/tcp open` |
+| T+~1 min | `hydra` brute-force launched against `192.168.1.152:22`, targeting user `victim` with a custom 15-entry password list |
+| T+~4 sec | 8 failed authentication attempts recorded by `sshd` in rapid succession |
+| T+~5 sec | Wazuh rule `5763` fires — "brute force trying to get access" (built-in aggregation rule) |
+| T+~5 sec | 9th attempt succeeds — password matched |
+| T+~5 sec | Wazuh rule `40112` fires — "Multiple authentication failures followed by a success" |
+
+## Technical Findings
+
+### Attack execution
+
+```
+hydra -l victim -P ~/password.txt ssh://192.168.1.152 -s 22 -V
+```
+
+- `-l victim` — fixed username (single-account attack, no user enumeration performed)
+- `-P ~/password.txt` — 15-entry custom password list, seeded with the target account's real password
+- `-s 22` — explicit port, required because the target is reached through a NAT-forwarded port on the firewall, not a default local connection
+
+Result:
+
+```
+[22][ssh] host: 192.168.1.152   login: victim   password: [REDACTED]
+1 of 1 target successfully completed, 1 valid password found
+```
+
+The attack tool required only ~5 seconds to exhaust the password list and identify
+the valid credential, illustrating how quickly an unthrottled SSH service can be
+compromised even with a small candidate list — real-world attacks would typically
+use lists of millions of entries.
+
+### Raw log evidence (target-side)
+
+```
+Sep 05 15:46:50 linux-victim-01 sshd-session[43071]: Failed password for victim from 192.168.1.234 port 58834 ssh2
+Sep 05 15:46:50 linux-victim-01 sshd-session[43090]: Failed password for victim from 192.168.1.234 port 58918 ssh2
+...
+Sep 05 15:46:48 linux-victim-01 sshd-session[43085]: Accepted password for victim from 192.168.1.234 port 58886 ssh2
+```
+
+Eight distinct `sshd-session` PIDs recorded failed attempts within roughly one
+second of each other, each from a different ephemeral source port — consistent
+with hydra's default of multiple parallel connection attempts (Hydra's own output
+noted 15 parallel tasks were configured, capped to the server's concurrent
+connection limit).
+
+## Detection Analysis
+
+Two Wazuh **built-in** rules fired, forming a clear two-stage detection story.
+
+### Stage 1 — Brute-force pattern detected
+
+| Field | Value |
+|---|---|
+| `rule.id` | 5763 |
+| `rule.level` | 10 |
+| `rule.description` | sshd: brute force trying to get access to the system. Authentication failed. |
+| `rule.frequency` | 8 |
+| `rule.mitre.id` | T1110 |
+| `rule.mitre.tactic` | Credential Access |
+| `rule.mitre.technique` | Brute Force |
+| `data.srcip` | 192.168.1.234 |
+| `data.dstuser` | victim |
+
+This is a **correlation/aggregation rule**, not a single-event alert: it does not
+fire on the first failed login, but only after Wazuh observes a threshold number
+of `sshd: authentication failed` events from the same source within a short time
+window. This design choice matters operationally — a single failed login is
+common and low-signal (a user simply mistyping a password), while a burst of
+failures in a few seconds is a high-confidence indicator of automated password
+guessing. Building detections on frequency/time-window patterns rather than
+individual events is a standard technique for keeping false-positive rates low
+in production SOC environments.
+
+### Stage 2 — Escalation: failures followed by success
+
+| Field | Value |
+|---|---|
+| `rule.id` | 40112 |
+| `rule.level` | 12 |
+| `rule.description` | Multiple authentication failures followed by a success. |
+| `rule.frequency` | 2 |
+| `rule.mitre.id` | T1078, T1110 |
+| `rule.mitre.tactic` | Defense Evasion, Persistence, Privilege Escalation, Initial Access, Credential Access |
+| `rule.mitre.technique` | Valid Accounts, Brute Force |
+| `rule.mail` | true |
+
+This second rule is the more critical alert from a SOC perspective: it correlates
+the preceding failure burst with an immediately subsequent successful login for
+the *same* account, which is a far stronger indicator of compromise than either
+signal alone. A successful login on its own is not inherently suspicious; a
+successful login immediately after a wave of failures against the same account
+almost certainly indicates the account is now compromised. Notably this rule is
+flagged `rule.mail: true`, meaning it is configured to trigger an email
+notification — in a live SOC this event would generate an active alert to an
+analyst rather than sitting passively in the log stream, reflecting its higher
+severity (level 12 vs. level 10 for the failure-only rule).
+
+The dual MITRE tactic mapping (Credential Access → Initial Access → Defense
+Evasion/Persistence/Privilege Escalation) reflects that a successful brute-force
+compromise is not just a credential-access event — it is the pivot point that
+opens the door to every subsequent stage of an intrusion.
+
+## Root Cause / Lessons Learned — Network Path Troubleshooting
+
+Before the attack could be executed, port scanning against the target's internal
+IP directly from the attacker box returned `filtered` rather than `open`,
+despite the SSH service being confirmed active and reachable from the internal
+network host.
+
+**Diagnostic process:**
+1. Confirmed the target's own firewall was not the cause — `ufw status` returned `inactive`.
+2. Confirmed the service was reachable from *within* the internal segment — a ping from the internal network's host machine to the target succeeded.
+3. This isolated the problem to the path *between* the external attacker segment and the internal segment — specifically, the perimeter firewall's NAT configuration.
+
+**Root cause:** The firewall had an existing NAT port-forward rule from a prior
+exercise (Writeup #01) mapping an external port to a *different* internal host
+and port (SMB/445 to a Windows target). No equivalent rule existed to forward
+external traffic on port 22 to `10.10.10.105`. Without such a rule, inbound
+packets addressed to the firewall's WAN interface on port 22 had nowhere to be
+routed internally and were silently dropped — this is expected, correct
+firewall behavior, not a fault.
+
+**Resolution:** Added a WAN NAT port-forward rule (WAN:22 → 10.10.10.105:22).
+After this change, a scan against the firewall's WAN address correctly returned
+`22/tcp open`, while a scan against the internal target IP directly continued to
+return `filtered` — also expected and correct, since external hosts have no
+route to the internal subnet and should never reach it by any path other than
+through the firewall.
+
+**Lesson:** In a segmented network, "is the service open" is not a single
+yes/no question — it depends on *which vantage point* you test from, and each
+new internal service exposed externally requires its own explicit NAT rule.
+Testing exclusively against the internal IP from an external host, or exclusively
+from an internal host, can each independently produce a misleading picture of
+what an actual internet-based attacker would observe.
+
+## Recommendations
+
+1. **Enable SSH key-based authentication and disable password authentication**
+   (`PasswordAuthentication no` in `sshd_config`) — this would have prevented
+   this attack outright, regardless of password strength or detection tooling.
+2. **Rate-limit or fail2ban SSH connections** at the host or firewall level to
+   automatically block source IPs after a small number of failed attempts,
+   rather than relying solely on detection-after-the-fact.
+3. **Enforce a strong password policy** if password authentication must remain
+   enabled, and rotate any credential that has been used in a testing/exposed
+   context (the account password used in this exercise should be rotated).
+4. **Restrict SSH exposure** to only the specific external IPs that require
+   access (e.g., via firewall rules), rather than allowing any source to reach
+   the port.
+5. **Verify SOC alert routing** for level-12+ rules such as `40112` to ensure
+   the configured email/notification channel reaches an analyst who can
+   respond in real time, since this rule specifically indicates likely account
+   compromise.
+
+## Appendix
+
+- Attack tool: `hydra` v9.7 (Kali Linux)
+- Detection platform: Wazuh 4.14.7 (Manager + Indexer + Dashboard, all-in-one)
+- Relevant Wazuh rule IDs: `5763`, `40112` (both built-in, `ruleset` default — no custom rule authored for this exercise)
+- MITRE ATT&CK techniques observed: T1110 (Brute Force), T1078 (Valid Accounts)
+================ 
+# DFIR Writeup #03: Lateral Movement via SMB Admin Shares to SYSTEM-Level Code Execution (Purple Team Exercise)
+
+## Executive Summary
+
+Writeup #01 identified that authenticated SMB access to a Windows host's `ADMIN$`/`C$` administrative shares represents a potential remote code execution vector, but stopped short of exploiting it. This exercise closes that gap: using Impacket's `impacket-psexec`, a simulated attacker leveraged local administrator credentials on `Windows-Victim-01` to drop a service binary via the `ADMIN$` share, register it as a Windows service, and obtain an interactive command shell running with **SYSTEM**-level privileges — the highest privilege tier available on Windows, exceeding even the Administrator account used to authenticate.
+
+**Result:** The attack succeeded end-to-end. Wazuh's built-in ruleset detected the service installation with a high-severity, MITRE-mapped alert configured to notify an analyst by email. However, the actual moment of SYSTEM-level command execution triggered only a low-severity, non-mailed rule — a meaningful gap in alert prioritization that is discussed in detail below.
+
+---
+
+## Scope & Objective
+
+**Objective:** Simulate lateral movement / remote code execution against a Windows host using previously-established SMB access, and validate what the SIEM detects at each stage of the technique — service installation, process execution, and the resulting privilege level.
+
+**In scope:**
+- `Windows-Victim-01` (target)
+- `pfSense-Firewall` (perimeter firewall/NAT, reusing the SMB port-forward rule from Writeup #01)
+- Kali Linux (attacker box, running Impacket)
+- Wazuh Manager (SIEM/detection)
+
+**Out of scope:** Persistence, further pivoting to `Linux-Victim-01`, data exfiltration, and any actions taken after the initial interactive shell was obtained. The privilege escalation step performed here (enabling a disabled built-in account) was researcher-controlled lab setup rather than an exploited vulnerability — this distinction is discussed in the Technical Findings.
+
+---
+
+## Environment / Network Topology
+
+| Host             | Role               | Network             | IP                                    |
+|------------------|--------------------|---------------------|---------------------------------------|
+| Kali Linux       | Attacker           | External (home LAN) | 192.168.1.234                         |
+| pfSense-Firewall | Perimeter FW / NAT | WAN / LAN           | WAN: 192.168.1.152 · LAN: 10.10.10.1 |
+| Windows-Victim-01| Target             | Internal LAN        | 10.10.10.100                          |
+| Wazuh-Manager    | SIEM               | Internal LAN        | 10.10.10.102                          |
+
+Network path and NAT configuration (WAN:445 → Windows-Victim-01:445) are unchanged from Writeup #01.
+
+---
+
+## Timeline
+
+| Time (local)          | Event                                                                                                                          |
+|-----------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| T+0                   | `nmap -sV -p 445 -Pn 192.168.1.152` confirms `445/tcp open` — reused NAT path from Writeup #01                                |
+| T+1                   | First `impacket-psexec` attempt using `victim` credentials succeeds authentication but reports `ADMIN$`/`C$` as not writable  |
+| T+2                   | `net localgroup Administrators` on Windows-Victim-01 reveals a disabled built-in `Administrator` account alongside `victim`   |
+| T+3                   | `Administrator` account enabled and assigned a password (`net user Administrator /active:yes`, then password set)             |
+| 15:11:59–15:12:04     | Second `impacket-psexec` attempt using `Administrator` credentials — `ADMIN$` writable, binary `XsHOJQPc.exe` uploaded, service `cAzZ` created and started |
+| 15:12:04.392          | **Wazuh rule 92650 fires** — new Windows service installed from Windows root path (level 12, mail: true)                      |
+| 15:12:05.175          | Interactive shell returned; **Wazuh rule 92052 fires** — abnormal process spawned `cmd.exe` (level 4, mail: false)            |
+| —                     | `whoami` confirms shell is running as `nt authority\system`                                                                   |
+| —                     | Session closed via `exit`; Impacket removes the dropped service and binary from the target                                     |
+
+---
+
+## Technical Findings
+
+### Initial Attempt — UAC Remote Token Filtering
+
+```
+impacket-psexec 'victim:[REDACTED]@192.168.1.152'
+```
+```
+[*] Requesting shares on 192.168.1.152.....
+[-] share 'ADMIN$' is not writable.
+[-] share 'C$' is not writable.
+```
+
+> **Analyst note:** The `victim` account is a member of the local Administrators group, yet write access to `ADMIN$`/`C$` was still denied. This is the expected behaviour of **Windows UAC remote token filtering**: when any local account (other than the built-in RID-500 `Administrator`) connects over the network, Windows strips the elevated Administrators token from the session, leaving only a standard user context. The result is that `victim` can *enumerate* shares — as demonstrated in Writeup #01 via `smbclient -L` — but cannot *write* to them remotely, because write access to `ADMIN$` (which maps directly to `%SystemRoot%`) requires an unfiltered administrative token. The built-in `Administrator` account (RID-500) is explicitly exempt from this filtering, which is why the second attempt below succeeded with that account. This behaviour can be modified via the `LocalAccountTokenFilterPolicy` registry key, which is itself a common misconfiguration finding in penetration tests.
+
+### Privilege Discovery — Built-in Administrator Account
+
+```
+net localgroup Administrators
+```
+```
+Administrator
+victim
+The command completed successfully.
+```
+
+```
+net user Administrator
+```
+```
+Account active               No
+```
+
+The built-in `Administrator` account was present in the local Administrators group but disabled — the Windows 11 default. It was enabled and assigned a known password for this exercise:
+
+```
+net user Administrator /active:yes
+net user Administrator [REDACTED]
+```
+
+> **Analyst note:** This step is lab setup, not an exploited vulnerability — enabling the account required an already-elevated local session on the target. In a real-world engagement, an attacker would need to reach this same state through credential theft, a separate privilege escalation exploit, discovery of an already-enabled admin account with a weak or default password, or abuse of `LocalAccountTokenFilterPolicy` on a misconfigured host. This writeup documents the execution technique that becomes available *once* that access exists, not a method for obtaining it.
+
+### Successful Exploitation
+
+```
+impacket-psexec 'Administrator:[REDACTED]@192.168.1.152'
+```
+```
+Impacket v0.14.0.dev0 - Copyright Fortra, LLC and its affiliated companies
+
+[*] Requesting shares on 192.168.1.152.....
+[*] Found writable share ADMIN$
+[*] Uploading file XsHOJQPc.exe
+[*] Opening SVCManager on 192.168.1.152.....
+[*] Creating service cAzZ on 192.168.1.152.....
+[*] Starting service cAzZ.....
+[!] Press help for extra shell commands
+Microsoft Windows [Version 10.0.26200.9168]
+(c) Microsoft Corporation. All rights reserved.
+
+C:\Windows\System32> whoami
+nt authority\system
+```
+
+> **Analyst note:** The session authenticated as `Administrator` but the resulting shell runs as `SYSTEM` — a strictly higher privilege tier. This happens because Windows services execute under whatever account the service definition specifies, and Impacket's default service configuration runs as `LocalSystem`. An attacker needs only *local admin rights* to install such a service, not the SYSTEM account itself, yet ends up with a SYSTEM-level interactive shell as the outcome. The implication is that any local administrator account credential — however it was obtained — represents a direct path to full SYSTEM access on that host via this technique.
+
+### Wazuh Detection — Service Installation (Windows Event ID 7045)
+
+| Field                              | Value                                                                                                                              |
+|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `rule.id`                          | 92650                                                                                                                              |
+| `rule.level`                       | 12                                                                                                                                 |
+| `rule.description`                 | New Windows Service Created to start from windows root path. Suspicious event as the binary may have been dropped using Windows Admin Shares. |
+| `rule.mitre.id`                    | T1021.002, T1569.002                                                                                                               |
+| `rule.mitre.tactic`                | Lateral Movement, Execution                                                                                                        |
+| `rule.mitre.technique`             | SMB/Windows Admin Shares, Service Execution                                                                                        |
+| `rule.mail`                        | true                                                                                                                               |
+| `data.win.eventdata.serviceName`   | cAzZ                                                                                                                               |
+| `data.win.eventdata.imagePath`     | `%systemroot%\XsHOJQPc.exe`                                                                                                        |
+| `data.win.eventdata.accountName`   | LocalSystem                                                                                                                        |
+| `data.win.eventdata.startType`     | demand start                                                                                                                       |
+| `data.win.system.eventSourceName`  | Service Control Manager                                                                                                            |
+| `timestamp`                        | 2026-09-13 @ 15:12:04.392                                                                                                          |
+
+> **Analyst note:** This built-in rule is notably more specific than the generic NTLM logon alert seen in Writeup #01 — its description explicitly names "Windows Admin Shares" as the likely delivery mechanism, which is exactly what occurred here. The randomised service name (`cAzZ`) and binary name (`XsHOJQPc.exe`) are characteristic Impacket-generated artefacts; a detection tuned to flag services whose `imagePath` resolves directly to `%systemroot%` (rather than a subdirectory like `System32`) is a reliable heuristic, since legitimate Windows services almost never install binaries directly into the Windows root.
+
+### Wazuh Detection — Process Execution (Sysmon Event ID 1)
+
+| Field                                   | Value                                                   |
+|-----------------------------------------|---------------------------------------------------------|
+| `rule.id`                               | 92052                                                   |
+| `rule.level`                            | 4                                                       |
+| `rule.description`                      | Windows command prompt started by an abnormal process   |
+| `rule.mitre.id`                         | T1059.003                                               |
+| `rule.mitre.tactic`                     | Execution                                               |
+| `rule.mitre.technique`                  | Windows Command Shell                                   |
+| `rule.mail`                             | false                                                   |
+| `data.win.eventdata.image`              | `C:\Windows\SysWOW64\cmd.exe`                           |
+| `data.win.eventdata.parentImage`        | `C:\Windows\XsHOJQPc.exe`                               |
+| `data.win.eventdata.user`              | NT AUTHORITY\SYSTEM                                     |
+| `data.win.eventdata.parentUser`         | NT AUTHORITY\SYSTEM                                     |
+| `data.win.eventdata.integrityLevel`     | System                                                  |
+| `data.win.eventdata.currentDirectory`   | `C:\Windows\system32\`                                  |
+| `timestamp`                             | 2026-09-13 @ 15:12:05.175                               |
+
+### Detection Gap — Missing Process Creation Event for the Dropped Binary
+
+A Sysmon Event ID 1 record for `XsHOJQPc.exe` itself — the process that would sit between the Service Control Manager and `cmd.exe` in the full execution chain — could not be located in the log, despite targeted searches by filename wildcard and by the exact `processGuid` referenced in the `cmd.exe` parent metadata (`{3f9566c4-af30-6aa6-4302-000000001100}`). Sysmon captured the *result* of that process running (its child `cmd.exe`, with correct parent metadata inherited) but not its own creation event.
+
+The full expected chain was:
+```
+services.exe → XsHOJQPc.exe → cmd.exe (nt authority\system)
+```
+
+Only the final link (`cmd.exe`) was present in the Sysmon log. The cause was not confirmed in this exercise; plausible explanations include the binary's extremely short lifetime before Impacket's automatic cleanup removed it from disk, or a gap in Sysmon configuration coverage for processes spawned directly from `%SystemRoot%`. This is flagged as an open item for follow-up investigation rather than a diagnosed root cause.
+
+---
+
+## Detection Analysis — Analyst Interpretation
+
+The two rules that fired tell a two-stage story with an important prioritization gap.
+
+Rule 92650 (service installation, level 12, `mail: true`) fires at the moment the malicious service is registered — before a single command is executed. This is a well-placed, actionable alert: it gives an analyst an opportunity to respond before the attacker has fully established their foothold. In a live SOC, this event would generate an immediate email notification.
+
+Rule 92052 (abnormal `cmd.exe` parent, level 4, `mail: false`) fires one second later, at the moment the attacker actually receives their interactive SYSTEM shell — which is arguably the more consequential event. Yet it carries a severity more than three times lower, and would not trigger any notification. An analyst relying solely on mailed alerts would learn about the service installation but not be automatically informed that a SYSTEM-level command shell was opened as a direct consequence.
+
+The two rules firing within one second of each other from the same agent is itself a high-confidence composite indicator that no single default rule currently correlates. A custom Wazuh rule correlating rule 92650 followed by rule 92052 within a short time window on the same agent would surface this as a unified, higher-severity alert — this is flagged in the recommendations below.
+
+This mirrors the analytical judgment discussed in Writeup #01: default rule severities reflect general risk patterns, but an analyst reviewing this specific two-event sequence in context would reasonably treat it as a single, high-severity incident rather than one high and one low finding.
+
+---
+
+## Root Cause / Lessons Learned
+
+1. **UAC remote token filtering is a frequently misunderstood boundary.** Being in the local Administrators group does not grant remote administrative access by default — the built-in RID-500 `Administrator` account is the only local account exempt from token filtering on network connections. This is the precise mechanism that separated `victim` (blocked) from `Administrator` (successful) in this exercise, despite both being Administrators group members.
+
+2. **A disabled built-in Administrator account is a latent escalation path.** It requires only one command to enable and is present on every Windows installation. If enabled with any discoverable or weak password, it immediately provides the UAC-exempt administrative token that makes this class of attack possible.
+
+3. **Service-based remote execution elevates to SYSTEM regardless of the authenticating account's own privilege level.** Administrator-level access is sufficient input to produce a SYSTEM-level output via this technique — which is a meaningfully higher outcome than the input credential alone would suggest.
+
+4. **Sysmon Event ID 1 coverage should not be assumed complete for short-lived, self-cleaning tooling.** This exercise surfaced a real gap: the binary that bridged service execution and shell delivery was not captured as a process creation event, despite its child process being logged. Defensive coverage for this class of technique should be validated against actual tool behaviour, not assumed from telemetry design alone.
+
+---
+
+## Recommendations
+
+1. Keep the built-in `Administrator` account disabled in production. If it must be enabled for a specific task, rotate its password immediately before enabling it and re-disable it as soon as the task is complete.
+2. Restrict remote write access to `ADMIN$`/`C$` via Group Policy or host firewall rules to only the specific management hosts and accounts that require it, rather than leaving these shares accessible to any authenticated local administrator over the network.
+3. Evaluate setting `LocalAccountTokenFilterPolicy` = 0 (the default) and verify it is not set to 1 on any host, as that setting disables UAC remote filtering and would have allowed the initial `victim` attempt to succeed without requiring the built-in Administrator account at all.
+4. ~~Author a custom Wazuh correlation rule to detect rule 92650 followed by rule 92052 within a short time window on the same agent, and assign it level 12 or above with `mail: true` — the combination is a reliable composite indicator for this exact attack chain.~~ **Closed — see Update below.**
+5. Investigate Sysmon configuration to determine why the dropped binary's own process creation event was not captured, and consider whether additional telemetry sources (e.g., Windows Security audit process creation, Event ID 4688) would provide redundant coverage for this gap.
+6. Apply the NTLMv1 deprecation and SMB exposure hardening recommended in Writeup #01 — this exercise reused the same exposed service and reinforces that those recommendations remain unaddressed.
+
+---
+
+## Update (14 September 2026) — Closing the Correlation Gap: Custom Wazuh Rule 100011
+
+Recommendation #4 above called for a custom Wazuh correlation rule combining rule 92650 (service installation) and rule 92052 (abnormal `cmd.exe` execution) into a single, higher-severity alert. This section documents that rule's implementation, two bugs encountered while authoring it, and its validation against a live re-run of the attack.
+
+### Rule Design
+
+```xml
+<rule id="100011" level="12" timeframe="60">
+  <if_sid>92052</if_sid>
+  <if_matched_sid>92650</if_matched_sid>
+  <same_field>agent.id</same_field>
+  <description>Correlated Lateral Movement: Service Creation followed by Suspicious Process Execution (Possible PsExec/Impacket)</description>
+  <mitre>
+    <id>T1021.002</id>
+    <id>T1569.002</id>
+    <id>T1059.003</id>
+  </mitre>
+  <options>alert_by_email</options>
+</rule>
+```
+
+The rule fires when rule 92052 is seen within 60 seconds of a prior match on rule 92650, elevating the pair to level 12 with `mail: true`.
+
+> **Analyst note:** The `<same_field>agent.id</same_field>` line was later removed (see Bug #2 below). It is shown here as originally written because the debugging process below is itself part of the record.
+
+### Bug #1 — `timeframe` Is an Attribute, Not an Element
+
+The first draft placed `timeframe` as its own XML element (`<timeframe>60</timeframe>`) rather than as an attribute on the `<rule>` tag. Wazuh rejected this with `Invalid option 'timeframe' for rule` and refused to start.
+
+> **Analyst note:** After the fix, the manager still failed to start with the same error. Re-reading the file with `cat` (rather than trusting that the `nano` edit had been clean) showed the old `<timeframe>` element was still present alongside the newly added attribute — both had silently coexisted. The lesson generalised beyond this one rule: always re-read a config file after editing it, rather than assuming the edit was applied as intended.
+
+### Bug #2 — `same_field` Does Not Work Against Static Metadata
+
+With the `timeframe` bug fixed, the manager started cleanly and the rule loaded without error — but it never fired, even when 92650 and 92052 were confirmed present for the same agent within the correlation window.
+
+```
+rule.id:92650  →  2026-09-13 22:58:23.685 UTC  (agent.id: 001)
+rule.id:92052  →  2026-09-13 22:58:24.145 UTC  (agent.id: 001, +0.46s)
+rule.id:100011 →  no hits
+```
+
+> **Analyst note:** `<same_field>` in Wazuh only compares fields extracted dynamically by a decoder (via `<field name="...">`), not fixed metadata that Wazuh attaches to every alert regardless of decoder — `agent.id` falls into the latter category. Because the field never resolves to a decoder-extracted value, the comparison silently fails with no error logged, which made this considerably harder to isolate than Bug #1. It is also redundant: `if_matched_sid` correlation is already scoped to the same agent by default, and only stops doing so if `<global_frequency/>` is explicitly added. The fix was simply to delete the `<same_field>` line.
+
+Final, working rule:
+
+```xml
+<rule id="100011" level="12" timeframe="60">
+  <if_sid>92052</if_sid>
+  <if_matched_sid>92650</if_matched_sid>
+  <description>Correlated Lateral Movement: Service Creation followed by Suspicious Process Execution (Possible PsExec/Impacket)</description>
+  <mitre>
+    <id>T1021.002</id>
+    <id>T1569.002</id>
+    <id>T1059.003</id>
+  </mitre>
+  <options>alert_by_email</options>
+</rule>
+```
+
+### Validation — Live Re-Run
+
+The attack was re-run end-to-end (`impacket-psexec` against `Windows-Victim-01`, same technique as the main body of this writeup) to generate fresh events after the rule was deployed. The first live-fire attempt post-fix was blocked by Windows Defender, which quarantined the dropped binary under signature `VirTool:Win32/RemoteExec!pz` before the service could establish its shell — an artefact of standard AV behaviour against RemCom-based tooling, not a Wazuh issue. A folder exclusion for `C:\Windows` was added to the lab target to allow the technique to execute, consistent with this being a controlled detection-engineering exercise rather than an AV-evasion test.
+
+With the exclusion in place, the attack succeeded and rule 100011 fired on the first attempt:
+
+| Field               | Value                                                                                                              |
+|---------------------|----------------------------------------------------------------------------------------------------------------------|
+| `rule.id`           | 100011                                                                                                              |
+| `rule.level`        | 12                                                                                                                   |
+| `rule.mail`         | true                                                                                                                 |
+| `rule.frequency`    | 2                                                                                                                    |
+| `rule.description`  | Correlated Lateral Movement: Service Creation followed by Suspicious Process Execution (Possible PsExec/Impacket) |
+| `rule.mitre.id`     | T1021.002, T1569.002, T1059.003                                                                                     |
+| `rule.mitre.tactic` | Lateral Movement, Execution                                                                                         |
+| `agent.name`        | windows-victim-01                                                                                                   |
+
+> **Analyst note:** The correlated alert carries all three MITRE technique IDs from its two constituent rules, giving an analyst the full technique chain in a single alert rather than requiring manual correlation across two separate low-context events — directly resolving the prioritisation gap identified in the Detection Analysis section above.
+
+### Outcome
+
+Recommendation #4 is closed. The manager was snapshotted (VMware) immediately after this validation to preserve the working configuration.
+
+---
+
+## Appendix
+
+- Attack tool: Impacket `impacket-psexec` (Impacket v0.14.0.dev0, Fortra)
+- Detection platform: Wazuh 4.14.7 (Manager + Indexer + Dashboard, all-in-one)
+- Relevant Wazuh rule IDs: `92650`, `92052` (built-in, default ruleset); `100011` (custom correlation rule, authored and validated 13–14 September 2026 — see Update above)
+- MITRE ATT&CK techniques observed: T1021.002 (Remote Services: SMB/Windows Admin Shares), T1569.002 (System Services: Service Execution), T1059.003 (Command and Scripting Interpreter: Windows Command Shell)
+- Related writeups: [Writeup #01 — External SMB Exposure](../dfir-writeups/01-external-smb-exposure-purple-team-exercise.md), [Writeup #02 — SSH Brute-Force](../dfir-writeups/02-ssh-bruteforce-linux-victim.md)
+================ 
+# Custom Rule 100010 — External-Source NTLM Network Logon
+
+**Rule ID:** 100010 · **Level:** 12 · **Parent rule:** 92657
+**MITRE ATT&CK:** T1075 (Pass the Hash) · T1550.002 (Use Alternate Authentication Material: Pass the Hash)
+
+## Purpose
+
+The default Wazuh rule (92657) fires on **any** NTLM network logon (Logon
+Type 3), regardless of source. In a real environment this generates constant
+noise, since ordinary internal SMB/file-sharing traffic uses the exact same
+authentication pattern as a credential-based lateral movement attack.
+
+This custom rule narrows that signal: it only escalates to a high-severity
+alert (level 12) when the NTLM logon originates from **outside** the lab's
+trusted LAN (`10.10.10.0/24`) — i.e., traffic that has crossed the pfSense
+perimeter from the "external" side, matching a realistic external-attacker
+scenario.
+
+## Final rule
+
+```xml
+<group name="windows,authentication,sysmon,">
+  <rule id="100010" level="12">
+    <if_sid>92657</if_sid>
+    <field name="win.eventdata.ipAddress" negate="yes">^10\.10\.10\.</field>
+    <description>NTLM Network Logon outside local network (Possible Pass-the-Hash / Lateral Movement)</description>
+    <mitre>
+      <id>T1075</id>
+      <id>T1550.002</id>
+    </mitre>
+  </rule>
+</group>
+```
+
+## Build process — what didn't work, and why
+
+Getting from "default rule fires" to "custom rule fires correctly" took three
+iterations, each surfacing a different piece of how Wazuh's rule engine
+actually reads Windows event data:
+
+**Attempt 1 — `<srcip negate="yes">10.10.10.0/24</srcip>`**
+Failed silently (rule never matched). Wazuh's generic `<srcip>` tag reads a
+normalized system field that Wazuh itself populates from *decoded* fields —
+it does **not** automatically read arbitrary nested event data. The Windows
+eventchannel decoder places the source address at
+`data.win.eventdata.ipAddress`, not in the generic `srcip` slot, so the
+comparison never had data to work against.
+
+**Attempt 2 — `<field name="win.eventdata.ipAddress" type="cidr">`**
+Failed at syntax validation:
+```
+WARNING: (7600): Invalid value 'cidr' for attribute 'type' in rule 100010
+```
+Wazuh's `<field>` tag does not support `cidr` as a type — CIDR-style matching
+is only valid on `<srcip>`/`<dstip>`, not on arbitrary custom fields.
+
+**Attempt 3 — `<field name="win.eventdata.ipAddress" negate="yes">^10\.10\.10\.</field>` (final)**
+Targets the correct nested field directly, using it as a plain
+regex-matched string field rather than trying to force IP/CIDR semantics onto
+it. `negate="yes"` inverts the match: the rule fires when the address does
+**not** start with `10.10.10.` — i.e., when it's external.
+
+## Validation
+
+```bash
+sudo /var/ossec/bin/wazuh-analysisd -t   # syntax check — passed
+sudo systemctl restart wazuh-manager
+```
+
+Re-running the SMB access from Kali (`smbclient -L //192.168.1.152 -U victim`)
+produced a matching alert in Wazuh Discover:
+```
+rule.id: 100010
+rule.level: 12
+```
+confirming the rule correctly escalates external NTLM logons while (by
+design) staying silent on internal LAN-to-LAN SMB traffic.
+
+## Key takeaway
+
+Wazuh's `<srcip>` convenience tag is not a generic "any IP field" matcher —
+it only works against fields the decoder has explicitly normalized. For
+product-specific or vendor-specific nested fields (like Windows eventchannel
+data), `<field name="...">` with a regex is the correct and more reliable
+approach.
+================ 
+# Detection Rules 5763 & 40112: SSH Brute-Force (Built-in Wazuh Rules)
+
+## Overview
+
+Unlike [rule 100010](100010-external-ntlm-logon.md), which was authored from
+scratch for this lab, rules **5763** and **40112** are part of Wazuh's
+**default ruleset** (`ossec_rules.xml` / `sshd_rules.xml`). They are documented
+here to record how they were identified, tested, and mapped to the incident
+observed in [writeup #02](../dfir-writeups/02-ssh-bruteforce-linux-victim.md).
+
+Analyzing and correctly interpreting existing, vendor-supplied detection
+content is a distinct skill from writing custom rules — in most SOC
+environments the majority of day-to-day alert triage happens against a
+pre-built ruleset, so understanding *why* a built-in rule fired, what it
+depends on, and how confident it should make an analyst is just as important
+as being able to write new ones.
+
+---
+
+## Rule 5763 — Brute-force pattern (failures only)
+
+```
+Rule ID:          5763
+Level:            10
+Description:      sshd: brute force trying to get access to the system.
+                   Authentication failed.
+Groups:           syslog, sshd, authentication_failures
+MITRE ATT&CK:     T1110 (Brute Force) — Tactic: Credential Access
+```
+
+**How it works:** This is a **correlation rule**, not a single-event rule. It
+does not fire on any individual `sshd: authentication failed` log line.
+Instead, it is defined (in Wazuh's rule engine) to watch for a minimum number
+of authentication-failure events from the *same source IP* within a bounded
+time window, and only fires once that frequency threshold is crossed. In the
+observed alert, `rule.frequency: 8` — the rule fired after the 8th failed
+attempt from `192.168.1.234` in rapid succession.
+
+**Why frequency-based, not per-event:** A single failed SSH login is common
+and low-signal — a legitimate user can easily mistype a password. Alerting an
+analyst on every single failure would generate unusable noise. By requiring a
+burst of failures within a short window, this rule filters out normal human
+error and isolates the pattern that is characteristic of automated
+password-guessing tools (like `hydra`), which attempt many credentials in a
+few seconds.
+
+**Dependency:** This rule relies on the underlying `sshd` decoder correctly
+parsing `Failed password for <user> from <ip> port <port>` lines from the
+system log source (in this lab, ingested via `journald` on the Ubuntu
+target). If the decoder does not match the log format — for example, on a
+different Linux distribution or SSH implementation with non-standard log
+phrasing — this rule will silently never fire, regardless of how many failed
+logins occur. This is a useful validation point when onboarding a new log
+source: confirm the decoder is matching before trusting the absence of
+alerts.
+
+---
+
+## Rule 40112 — Failures followed by a success
+
+```
+Rule ID:          40112
+Level:            12
+Description:      Multiple authentication failures followed by a success.
+Groups:           syslog, attacks
+MITRE ATT&CK:     T1110 (Brute Force), T1078 (Valid Accounts)
+                   Tactics: Credential Access, Initial Access, Defense Evasion,
+                   Persistence, Privilege Escalation
+Mail:             true (flagged for notification)
+```
+
+**How it works:** This is a second-order correlation rule, one level up from
+5763. It correlates a preceding burst of authentication failures for a given
+account with an **immediately subsequent successful login for that same
+account**. In the observed alert, `rule.frequency: 2` reflects the minimal
+internal state needed to link "there were recent failures" with "then a
+success occurred" for the same target — it does not require re-counting the
+entire failure burst, since rule 5763 (or the underlying failure count) has
+already established that pattern exists.
+
+**Why this is the higher-priority alert:** A successful login is not
+inherently suspicious on its own — that's how legitimate access looks. A
+successful login for an account that *just* experienced a wave of failed
+attempts is a very different signal: it strongly suggests the password was
+guessed rather than entered correctly by its legitimate owner. This is
+reflected in the higher severity level (12 vs. 10) and the fact that this
+rule — unlike 5763 — is flagged `rule.mail: true`, meaning it is configured to
+actively notify (e.g. via email) rather than sit passively in the log stream.
+In a live SOC, this rule firing should be treated as a likely-compromised
+account until proven otherwise, warranting immediate password reset and
+session review for the affected user.
+
+**Dual MITRE mapping rationale:** The rule maps to both T1110 (the brute-force
+method used to obtain the credential) and T1078 (the resulting use of what is
+now a "valid" — but attacker-controlled — account). The five listed tactics
+reflect that a successful credential-guessing compromise is a pivot point: it
+simultaneously represents the culmination of a Credential Access attempt and
+the start of Initial Access, with everything that follows (persistence,
+privilege escalation, defense evasion) now made possible using a legitimate
+account rather than an exploited vulnerability — which is itself harder to
+detect and often harder to remediate (rotating a password is not the same as
+patching a bug).
+
+---
+
+## Validation
+
+Both rules were confirmed against live traffic generated by `hydra` in
+[writeup #02](../dfir-writeups/02-ssh-bruteforce-linux-victim.md):
+
+- Rule 5763 fired once, after 8 failed attempts from `192.168.1.234` against user `victim`.
+- Rule 40112 fired immediately after, correlating those failures with the successful 9th attempt.
+
+No modification to the default ruleset was required for either rule — both
+are enabled out of the box in a standard Wazuh 4.14.7 installation. This
+exercise's value was in **identifying which built-in rules matter for a given
+attack scenario, confirming they fire as expected against a real (simulated)
+attack, and understanding the detection logic well enough to explain it** —
+not in writing new detection content.

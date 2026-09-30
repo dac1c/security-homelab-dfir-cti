@@ -62,7 +62,6 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |Offensive tooling|Kali Linux, nmap, smbclient, enum4linux, Impacket (psexec, secretsdump)|
 |CTI (in progress)|OpenCTI, MISP|
 |SOAR|Shuffle (Wazuh alerts forwarded to Slack via webhook, working)|
-|Infrastructure (in progress)|Docker, Kubernetes|
 
 ---
 
@@ -131,7 +130,6 @@ built from raw STIX/IOC data.
 * [x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
 * [x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — three analyst-style CTI reports published
 * [x] SOAR automation with Shuffle: Wazuh alerts (level 7 and above) are forwarded to Slack #soc-alerts, verified with a real Wazuh alert end to end. Details in [docs](./docs/soar-shuffle-and-lessons-learned.md)
-* [ ] Kubernetes lab (planned)
 
 ---
 
