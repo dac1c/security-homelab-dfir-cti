@@ -1,5 +1,10 @@
 # SOAR Integration (Shuffle) and Detection Engineering Lessons Learned
 
+**Date:** October 01 - 2026
+**Status:** Shuffle → Slack pipeline confirmed working for general Wazuh alerts (level ≥ 7). The CTI-driven pfSense rules (100020-100025) are validated with `wazuh-logtest` only; a live end-to-end alert through the full pfSense → Wazuh → Shuffle → Slack chain for those specific rules was attempted but not completed, for the reasons documented in Section 2.
+
+This document exists because most of the real engineering work in this phase of the lab was debugging, not building. The sections below are left close to how the problems were actually found and fixed, rather than cleaned up into a success-only narrative.
+
 ## 1. Alert pipeline
 
 ```
@@ -55,3 +60,9 @@ These were found while trying to get a live alert from the pfSense-to-Wazuh rule
 - Rule 510 (rootcheck "Generic" signature) produces a burst of level 7 alerts on every manager restart, which floods Slack. Raise the integration level or exclude the rule.
 - The MITRE field in the Slack message shows raw lists. Use `.0` on `rule.mitre.technique` and `rule.mitre.id` to take the first element.
 - Known false positives: rule 92213 (`__PSScriptPolicyTest_*.ps1` created by PowerShell itself) and rule 61634 (`backgroundTaskHost.exe` from the Your Phone app).
+
+## 4. Open items for a future session
+
+- Live end-to-end alert through Shuffle specifically for rules 100020-100025
+- ICMP child decoder for pfSense filterlog
+- Root-cause the `wazuh-logtest` hang (item 7 above)

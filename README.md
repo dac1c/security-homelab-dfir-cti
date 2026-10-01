@@ -60,7 +60,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |SIEM / XDR|Wazuh (Indexer + Manager + Dashboard), custom decoder, rules and CDB threat-intel lists|
 |Endpoint telemetry|Sysmon (SwiftOnSecurity config)|
 |Offensive tooling|Kali Linux, nmap, smbclient, enum4linux, Impacket (psexec, secretsdump)|
-|CTI (in progress)|OpenCTI, MISP|
+|CTI|OpenCTI, MISP (3 feeds: ThreatFox, CIRCL OSINT, URLhaus)|
 |SOAR|Shuffle (Wazuh alerts forwarded to Slack via webhook, working)|
 
 ---
@@ -70,7 +70,7 @@ keep the exercises realistic and the defensive side genuinely isolated.
 |Folder|Contents|
 |-|-|
 |[`dfir-writeups/`](./dfir-writeups)|Full incident-style reports for each purple team exercise — timeline, technical findings, detection analysis, root cause, recommendations|
-|[`detection-rules/`](./detection-rules)|Custom Wazuh detection rules, decoders and threat-intel lists written for specific attack patterns observed in this lab
+|[`detection-rules/`](./detection-rules)|Custom Wazuh detection rules, decoders and threat-intel lists written for specific attack patterns observed in this lab|
 |[`network-diagrams/`](./network-diagrams)|Network topology and NAT/routing diagrams|
 |[`cti-reports/`](./cti-reports)|Threat intelligence analyses (APT/malware campaigns) using OpenCTI/MISP|
 |[`docs/`](./docs)|Lab build documentation, [SOAR integration and detection-engineering lessons learned](./docs/soar-shuffle-and-lessons-learned.md)|
@@ -119,7 +119,7 @@ built from raw STIX/IOC data.
 
 ---
 
-**Status note on rules 100020-100025:** the rules and CDB lists are validated with logtest against a hand-built pfSense log line. A full live end-to-end alert was not completed. Debugging showed that live pfSense syslog arrives without a hostname field, that pass rules are not logged by default, and that the custom IPv4 decoder does not yet handle ICMP lines. Full findings are in the [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
+**Status note on rules 100020-100025:** the rules and CDB lists are validated with logtest against a hand-built pfSense log line. A full live end-to-end alert was not completed. Debugging showed that live pfSense syslog arrives without a hostname field, that pass rules are not logged by default, that the custom IPv4 decoder does not yet handle ICMP lines, and that `wazuh-logtest` itself hung during the last attempts without a confirmed cause. Full findings are in the [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
 
 ---
 
@@ -129,7 +129,7 @@ built from raw STIX/IOC data.
 * [x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
 * [x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
 * [x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — three analyst-style CTI reports published
-* [x] SOAR automation with Shuffle: Wazuh alerts (level 7 and above) are forwarded to Slack #soc-alerts, verified with a real Wazuh alert end to end. Details in [docs](./docs/soar-shuffle-and-lessons-learned.md)
+* [x] SOAR automation with Shuffle: Wazuh alerts (level 7 and above) are forwarded to Slack #soc-alerts via the Shuffle integration block, confirmed with a real Wazuh alert. A live end-to-end test specifically for the CTI-driven pfSense rules (100020-100025) was not completed — see [lessons learned](./docs/soar-shuffle-and-lessons-learned.md) for why and what was tried
 
 ---
 
