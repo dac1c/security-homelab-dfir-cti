@@ -3,21 +3,19 @@
 **Author:** Haris Dacić — [LinkedIn](https://www.linkedin.com/in/dacicharis/) · [TryHackMe](https://tryhackme.com/p/harisD)
 **Focus areas:** Digital Forensics & Incident Response · Cyber Threat Intelligence · SOC Operations
 
+## At a glance
+
+* **4** purple-team exercises, each documented as an incident-style writeup mapped to MITRE ATT&CK
+* **9** custom Wazuh rules: 3 for Windows attack behaviour (two of them correlation rules), 6 matching pfSense firewall logs against CTI-derived indicator lists
+* **3** CTI reports built from OpenCTI/MISP indicator data (KrustyLoader, ArcaneDoor, Secret Blizzard)
+* **pfSense → Wazuh** syslog pipeline with a custom decoder and CDB threat-intel lists
+* **Wazuh → Shuffle → Slack** alert forwarding for level 7 and above
+
 ---
 
 ## Why this exists
 
-Most junior security portfolios list certifications and finished courses. This
-one is different: it's a **fully self-built, self-documented security
-laboratory** — network segmentation, a working SIEM, live purple-team
-exercises, and detection engineering — built from two consumer PCs and
-documented the way a real SOC team documents its work.
-
-The same curiosity that drives this lab led to an independent OSINT
-investigation that uncovered unsecured personal data on a Montenegrin
-government web portal — formally confirmed and acted on by the national Data
-Protection Agency (AZLP), resulting in a compliance inspection of two state
-institutions. This lab is that same instinct, applied systematically.
+This repository documents a self-built security lab and the work done in it: network segmentation with a pfSense firewall, a Wazuh SIEM, purple-team exercises against Windows and Linux targets, and detection engineering driven by threat intelligence. It runs on two consumer PCs and is documented the way a SOC team documents its work: timeline, findings, detection analysis, root cause, recommendations.
 
 ---
 
@@ -119,17 +117,17 @@ built from raw STIX/IOC data.
 
 ---
 
-**Status note on rules 100020-100025:** the rules and CDB lists are validated with logtest against a hand-built pfSense log line. A full live end-to-end alert was not completed. Debugging showed that live pfSense syslog arrives without a hostname field, that pass rules are not logged by default, that the custom IPv4 decoder does not yet handle ICMP lines, and that `wazuh-logtest` itself hung during the last attempts without a confirmed cause. Full findings are in the [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
+**Validation note (rules 100020–100025):** all six rules were validated with `wazuh-logtest` using synthetic pfSense log lines. The initial single-list ArcaneDoor version was also confirmed by a live scan from the Kali VM; live traffic was not repeated for the tiered rules or for 100024/100025. Known limitations and the debugging record are in [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
 
 ---
 
-## What's next
+## Milestones
 
 * [x] Linux target with auditd, for cross-platform detection coverage
-* [x] Additional attack scenarios (lateral movement via SMB Admin Shares, credential dumping)
-* [x] Custom Wazuh rules — correlation rules 100011 and 100012, plus tiered rules 100020–100023, which match pfSense firewall logs against CDB lists built from CTI Report #02 (the first case of CTI directly feeding detection). The correlation rules were validated against live attack traffic; the CDB rules were validated with logtest, and the initial single-list version also with a live scan
-* [x] OpenCTI populated with real, public threat intel (ThreatFox, CIRCL OSINT, URLhaus feeds) — three analyst-style CTI reports published
-* [x] SOAR automation with Shuffle: Wazuh alerts (level 7 and above) are forwarded to Slack #soc-alerts via the Shuffle integration block, confirmed with a real Wazuh alert. A live end-to-end test specifically for the CTI-driven pfSense rules (100020-100025) was not completed — see [lessons learned](./docs/soar-shuffle-and-lessons-learned.md) for why and what was tried
+* [x] Lateral movement (SMB Admin Shares) and credential dumping exercises
+* [x] Custom Wazuh rules: correlation rules 100011/100012 validated against live attack traffic; CTI-driven rules 100020–100025 validated as described in the validation note above
+* [x] OpenCTI populated with public threat intel (ThreatFox, CIRCL OSINT, URLhaus); three CTI reports published
+* [x] SOAR with Shuffle: Wazuh alerts of level 7 and above forwarded to Slack #soc-alerts, confirmed with a real Wazuh alert
 
 ---
 
