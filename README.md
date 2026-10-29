@@ -117,7 +117,7 @@ built from raw STIX/IOC data.
 
 ---
 
-**Validation note (rules 100020–100025):** all six rules were validated with `wazuh-logtest` using synthetic pfSense log lines. The initial single-list ArcaneDoor version was also confirmed by a live scan from the Kali VM; live traffic was not repeated for the tiered rules or for 100024/100025. Known limitations and the debugging record are in [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
+**Validation note (rules 100020–100025):** all six rules were validated with `wazuh-logtest` using synthetic pfSense log lines. The initial single-list ArcaneDoor version was also confirmed by a live scan from the Kali VM. A live end-to-end alert for the tiered rules and for 100024/100025 was attempted but not completed; the known limitations and findings are in [lessons learned](./docs/soar-shuffle-and-lessons-learned.md).
 
 ---
 

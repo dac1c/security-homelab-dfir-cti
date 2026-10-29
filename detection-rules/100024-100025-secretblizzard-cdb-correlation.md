@@ -85,7 +85,7 @@ Three `wazuh-logtest` checks with synthetic filterlog lines, differing only in t
 | 2 | destination `45.61.149.109` | 100025, level 12, T1557, alert |
 | 3 | source `192.168.1.105` (not listed) | decoded, **no rule matched** |
 
-No live traffic test was run for these rules (unlike the initial ArcaneDoor validation, which included a live nmap scan). Given the pipeline itself was already proven end-to-end for the identical decoder and lookup mechanism, a repeat live test was judged to add validation of the same mechanism rather than new information; this is a deliberate scope decision, not an oversight.
+A live end-to-end test for these rules was attempted but not completed; see the [lessons-learned document](../docs/soar-shuffle-and-lessons-learned.md) for the findings. These rules are therefore validated with `wazuh-logtest` only.
 
 ## Limitations
 
@@ -97,4 +97,4 @@ No live traffic test was run for these rules (unlike the initial ArcaneDoor vali
 
 ## Key takeaway
 
-Extending an existing, already-debugged pipeline to a second CTI report was fast precisely because the hard problems (syslog reception, decoder correctness, CDB compilation and reload behavior) were solved once and reused. The more interesting decision here was what *not* to build: no tiering (only one confirmed indicator existed to tier), no domain rule (the log source cannot support it), and no repeat live-fire test (it would have re-validated a mechanism already proven, not added new confidence). Knowing when additional validation work would not change the risk assessment is as much a part of detection engineering as building the detection itself.
+Extending the pipeline to a second CTI report reused the decoder and CDB mechanics worked out for rules 100020–100023. Two scoping decisions were deliberate: no tiering (only one confirmed indicator existed to tier) and no domain rule (the log source cannot support it). Live end-to-end validation was not achieved, so the status of these rules is logtest-validated, not live-validated.
