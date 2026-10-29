@@ -35,4 +35,6 @@ desktop.ini
 
 !cti-reports/03-secret-blizzard-frozen-in-transit.md
 !detection-rules/100024-100025-secretblizzard-cdb-correlation.md
-!detection-rules/lists/secretblizzard-ips.txtreview_dump.txt
+!detection-rules/lists/secretblizzard-ips.txt
+
+review_dump.txt
